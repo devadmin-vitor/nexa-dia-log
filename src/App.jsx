@@ -5,12 +5,12 @@ import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import { Toaster as SonnerToaster } from 'sonner';
 
 import AppLayout from '@/components/layout/AppLayout';
-import Dashboard from '@/pages/Dashboard';
-import EntradaDados from '@/pages/EntradaDados';
-import GerarRelatorio from '@/pages/GerarRelatorio';
-import Historico from '@/pages/Historico';
+import ImportarXML from '@/pages/ImportarXML';
+import NotasFiscais from '@/pages/NotasFiscais';
+import RelatorioXML from '@/pages/RelatorioXML';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -18,27 +18,22 @@ const AuthenticatedApp = () => {
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background">
-        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-4 border-muted border-t-primary rounded-full animate-spin" />
       </div>
     );
   }
 
   if (authError) {
-    if (authError.type === 'user_not_registered') {
-      return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      navigateToLogin();
-      return null;
-    }
+    if (authError.type === 'user_not_registered') return <UserNotRegisteredError />;
+    if (authError.type === 'auth_required') { navigateToLogin(); return null; }
   }
 
   return (
     <Routes>
       <Route element={<AppLayout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/entrada" element={<EntradaDados />} />
-        <Route path="/relatorio" element={<GerarRelatorio />} />
-        <Route path="/historico" element={<Historico />} />
+        <Route path="/" element={<ImportarXML />} />
+        <Route path="/notas" element={<NotasFiscais />} />
+        <Route path="/relatorio" element={<RelatorioXML />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
@@ -53,9 +48,10 @@ function App() {
           <AuthenticatedApp />
         </Router>
         <Toaster />
+        <SonnerToaster richColors position="top-right" />
       </QueryClientProvider>
     </AuthProvider>
-  )
+  );
 }
 
-export default App
+export default App;
