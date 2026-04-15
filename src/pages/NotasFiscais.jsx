@@ -9,6 +9,11 @@ import { Search, FileText, Trash2 } from 'lucide-react';
 import NFCard from '@/components/nf/NFCard';
 import NFDetail from '@/components/nf/NFDetail';
 import { toast } from 'sonner';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 export default function NotasFiscais() {
   const [search, setSearch] = useState('');
@@ -83,7 +88,38 @@ export default function NotasFiscais() {
       ) : (
         <div className="space-y-3">
           {filtered.map((nf) => (
-            <NFCard key={nf.id} nf={nf} onClick={() => setSelectedNF(nf)} />
+            <div key={nf.id} className="relative group">
+              <NFCard nf={nf} onClick={() => setSelectedNF(nf)} />
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute top-3 right-10 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10 z-10"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Excluir NF-e #{nf.numero_nf}?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      A nota fiscal será removida do sistema e poderá ser reimportada via XML com novas quantidades. Esta ação não pode ser desfeita.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={() => deleteMutation.mutate(nf.id)}
+                    >
+                      Excluir
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           ))}
         </div>
       )}
