@@ -1,0 +1,22 @@
+{
+  "name": "Product",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome do produto"
+    },
+    "volume_ml": {
+      "type": "number",
+      "description": "Volume em mililitros (ml)"
+    },
+    "batch_id": {
+      "type": "string",
+      "description": "ID do lote/sess\u00e3o de entrada"
+    }
+  },
+  "required": [
+    "name",
+    "volume_ml"
+  ]
+}
