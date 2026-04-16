@@ -16,6 +16,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
 import jsPDF from 'jspdf';
 import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -159,6 +161,7 @@ export default function RelatorioXML() {
   const [searchProduto, setSearchProduto] = useState('');
   const [sortCol, setSortCol] = useState('total_qty');
   const [sortDir, setSortDir] = useState('desc');
+  const [selectedProduct, setSelectedProduct] = useState(null);
 
   const { data: notas = [], isLoading, refetch } = useQuery({
     queryKey: ['notas-fiscais'],
@@ -355,7 +358,7 @@ export default function RelatorioXML() {
       ) : (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="flex flex-wrap gap-4 w-full">
             {[
               { icon: Package, label: 'Produtos Distintos', value: reportData.length },
               { icon: Droplets, label: 'Quantidade Total', value: totalQty.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) },
@@ -363,13 +366,13 @@ export default function RelatorioXML() {
               { icon: DollarSign, label: 'Valor Total Gasto', value: totalGasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) },
               { icon: TrendingUp, label: 'Custo Médio Geral', value: custaMedioGeral.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) },
             ].map(({ icon: Icon, label, value }) => (
-              <Card key={label} className="p-4 flex items-center gap-3">
+              <Card key={label} className="flex-1 min-w-[200px] p-4 flex items-center gap-3 bg-card border rounded-xl shadow-sm">
                 <div className="w-9 h-9 rounded-lg bg-accent flex items-center justify-center shrink-0">
                   <Icon className="w-4 h-4 text-accent-foreground" />
                 </div>
-                <div className="min-w-0">
-                  <p className="text-xs text-muted-foreground">{label}</p>
-                  <p className="text-lg font-bold truncate">{value}</p>
+                <div>
+                  <p className="text-xs text-muted-foreground whitespace-nowrap">{label}</p>
+                  <p className="text-lg xl:text-xl font-bold break-words">{value}</p>
                 </div>
               </Card>
             ))}
@@ -443,35 +446,33 @@ export default function RelatorioXML() {
                     {reportData.map((row, i) => {
                       const pct = totalQty > 0 ? ((row.total_qty / totalQty) * 100).toFixed(1) : '0';
                       return (
-                        <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors">
-                          <td className="py-3 px-3 text-muted-foreground align-top">{i + 1}</td>
-                          <td className="py-3 px-3 font-mono text-xs align-top">{row.codigo || '-'}</td>
-                          <td className="py-3 px-3 align-top">
+                        <tr
+                          key={i}
+                          className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors cursor-pointer"
+                          onClick={() => setSelectedProduct(row)}
+                        >
+                          <td className="py-3 px-3 text-muted-foreground align-middle">{i + 1}</td>
+                          <td className="py-3 px-3 font-mono text-xs align-middle">{row.codigo || '-'}</td>
+                          <td className="py-3 px-3 align-middle">
                             <p className="font-semibold text-sm">{row.descricao}</p>
                             <div className="flex items-center gap-2 mt-0.5">
                               <Badge variant="secondary" className="text-xs font-normal">{row.embalagem || '-'}</Badge>
                               <span className="text-xs text-muted-foreground">{row.unidade || '-'}</span>
                             </div>
-                            {row.nfs_pertencentes && (
-                              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                                <span className="font-medium text-foreground">NFs: </span>
-                                {row.nfs_pertencentes}
-                              </p>
-                            )}
                           </td>
-                          <td className="py-3 px-3 text-right font-mono font-semibold align-top">
+                          <td className="py-3 px-3 text-right font-mono font-semibold align-middle">
                             {row.total_qty.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}
                           </td>
-                          <td className="py-3 px-3 text-right align-top">
+                          <td className="py-3 px-3 text-right align-middle">
                             <Badge variant="outline">{row.count}</Badge>
                           </td>
-                          <td className="py-3 px-3 text-right font-medium text-primary align-top">
+                          <td className="py-3 px-3 text-right font-medium text-primary align-middle">
                             {row.valor_total_gasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </td>
-                          <td className="py-3 px-3 text-right text-muted-foreground align-top">
+                          <td className="py-3 px-3 text-right text-muted-foreground align-middle">
                             {row.custo_medio > 0 ? row.custo_medio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
                           </td>
-                          <td className="py-3 px-3 text-right text-muted-foreground align-top">{pct}%</td>
+                          <td className="py-3 px-3 text-right text-muted-foreground align-middle">{pct}%</td>
                         </tr>
                       );
                     })}
@@ -491,6 +492,77 @@ export default function RelatorioXML() {
           </Card>
         </>
       )}
+
+      {/* Product Detail Modal */}
+      <Dialog open={!!selectedProduct} onOpenChange={(open) => !open && setSelectedProduct(null)}>
+        <DialogContent className="max-w-lg">
+          {selectedProduct && (
+            <>
+              <DialogHeader>
+                <p className="text-xs text-muted-foreground font-mono">{selectedProduct.codigo || 'Sem código'}</p>
+                <DialogTitle className="text-lg leading-tight">{selectedProduct.descricao}</DialogTitle>
+                <div className="flex items-center gap-2 pt-1">
+                  <Badge variant="secondary">{selectedProduct.embalagem || '-'}</Badge>
+                  <span className="text-xs text-muted-foreground">{selectedProduct.unidade || '-'}</span>
+                </div>
+              </DialogHeader>
+
+              {/* KPI grid */}
+              <div className="grid grid-cols-3 gap-3 mt-2">
+                {[
+                  { label: 'Qtd. Total', value: selectedProduct.total_qty.toLocaleString('pt-BR', { maximumFractionDigits: 3 }) },
+                  { label: 'Valor Total', value: selectedProduct.valor_total_gasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) },
+                  { label: 'Custo Médio', value: selectedProduct.custo_medio > 0 ? selectedProduct.custo_medio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-' },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-muted/50 rounded-lg p-3 text-center">
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="font-bold text-sm mt-0.5 break-words">{value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Representatividade */}
+              <div className="space-y-3 mt-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Representatividade no Relatório</p>
+                <div className="space-y-2">
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-muted-foreground">% em Quantidade</span>
+                      <span className="font-semibold">
+                        {totalQty > 0 ? ((selectedProduct.total_qty / totalQty) * 100).toFixed(1) : '0'}%
+                      </span>
+                    </div>
+                    <Progress value={totalQty > 0 ? (selectedProduct.total_qty / totalQty) * 100 : 0} className="h-2" />
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-muted-foreground">% em Valor</span>
+                      <span className="font-semibold">
+                        {totalGasto > 0 ? ((selectedProduct.valor_total_gasto / totalGasto) * 100).toFixed(1) : '0'}%
+                      </span>
+                    </div>
+                    <Progress value={totalGasto > 0 ? (selectedProduct.valor_total_gasto / totalGasto) * 100 : 0} className="h-2" />
+                  </div>
+                </div>
+              </div>
+
+              {/* NFs pertencentes */}
+              {selectedProduct.nfs_pertencentes && (
+                <div className="mt-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+                    Presente nas Notas Fiscais ({selectedProduct.count} entrada{selectedProduct.count !== 1 ? 's' : ''})
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+                    {selectedProduct.nfs_pertencentes.split(', ').map(nf => (
+                      <Badge key={nf} variant="outline" className="font-mono text-xs">#{nf}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
