@@ -54,43 +54,61 @@ function exportReportPDF(data, filters) {
   doc.text(`Valor total: ${totalGasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`, 180, y);
   y += 10;
 
-  // Columns: Desc | Embalagem | UN | Qtd | Entradas | Pertence | Vl.Total | Custo Médio
-  const cols = [14, 90, 120, 135, 155, 175, 220, 255];
+  // Columns: # | Desc | Embalagem | UN | Qtd | Ent. | Vl.Total | Custo Médio
+  // "Pertence" é impresso como sublinha abaixo do produto
+  const cols = [14, 22, 100, 132, 148, 168, 210, 255];
   doc.setFillColor(230, 245, 240);
   doc.rect(14, y - 1, W - 28, 7, 'F');
   doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(40, 100, 80);
-  doc.text('Produto / Descrição', cols[0], y + 4);
-  doc.text('Embalagem', cols[1], y + 4);
-  doc.text('UN', cols[2], y + 4);
-  doc.text('Qtd. Total', cols[3], y + 4, { align: 'right' });
-  doc.text('Ent.', cols[4], y + 4, { align: 'right' });
-  doc.text('Pertence (NFs)', cols[5], y + 4);
+  doc.text('#', cols[0], y + 4);
+  doc.text('Produto / Descrição', cols[1], y + 4);
+  doc.text('Embalagem', cols[2], y + 4);
+  doc.text('UN', cols[3], y + 4);
+  doc.text('Qtd. Total', cols[4], y + 4, { align: 'right' });
+  doc.text('Ent.', cols[5], y + 4, { align: 'right' });
   doc.text('Vl. Total', cols[6], y + 4, { align: 'right' });
   doc.text('Custo Médio', cols[7], y + 4, { align: 'right' });
   doc.setTextColor(0); y += 10;
 
   doc.setFontSize(7); doc.setFont('helvetica', 'normal');
   data.forEach((row, idx) => {
-    if (y > 185) { doc.addPage(); y = 20; }
-    if (idx % 2 === 0) { doc.setFillColor(248, 252, 250); doc.rect(14, y - 1, W - 28, 7, 'F'); }
-    const desc = row.descricao.length > 42 ? row.descricao.substring(0, 40) + '...' : row.descricao;
-    const pertence = row.nfs_pertencentes.length > 30 ? row.nfs_pertencentes.substring(0, 28) + '...' : row.nfs_pertencentes;
-    doc.text(desc, cols[0], y + 4);
-    doc.text((row.embalagem || '-').substring(0, 14), cols[1], y + 4);
-    doc.text(row.unidade || '-', cols[2], y + 4);
-    doc.text(row.total_qty.toLocaleString('pt-BR', { maximumFractionDigits: 3 }), cols[3], y + 4, { align: 'right' });
-    doc.text(String(row.count), cols[4], y + 4, { align: 'right' });
-    doc.text(pertence, cols[5], y + 4);
+    // Each row = main line (9mm) + sublinha pertence (5mm) = 14mm total
+    const rowH = 14;
+    if (y > 180) { doc.addPage(); y = 20; }
+    if (idx % 2 === 0) { doc.setFillColor(248, 252, 250); doc.rect(14, y - 1, W - 28, rowH, 'F'); }
+
+    const desc = row.descricao.length > 48 ? row.descricao.substring(0, 46) + '...' : row.descricao;
+
+    // Main line
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(0);
+    doc.text(String(idx + 1), cols[0], y + 4);
+    doc.setFont('helvetica', 'bold');
+    doc.text(desc, cols[1], y + 4);
+    doc.setFont('helvetica', 'normal');
+    doc.text((row.embalagem || '-').substring(0, 16), cols[2], y + 4);
+    doc.text(row.unidade || '-', cols[3], y + 4);
+    doc.text(row.total_qty.toLocaleString('pt-BR', { maximumFractionDigits: 3 }), cols[4], y + 4, { align: 'right' });
+    doc.text(String(row.count), cols[5], y + 4, { align: 'right' });
     doc.text(row.valor_total_gasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), cols[6], y + 4, { align: 'right' });
     doc.text(row.custo_medio > 0 ? row.custo_medio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-', cols[7], y + 4, { align: 'right' });
-    y += 7;
+
+    // Sub-line: Pertence (NFs) — full list, wrapped
+    doc.setFontSize(6); doc.setTextColor(100, 120, 110);
+    const pertenceLabel = 'NFs: ';
+    const pertenceText = row.nfs_pertencentes || '-';
+    const maxWidth = W - 14 - cols[1] - 2;
+    const lines = doc.splitTextToSize(pertenceLabel + pertenceText, maxWidth);
+    doc.text(lines[0], cols[1], y + 9); // only first line to keep height fixed
+    doc.setFontSize(7); doc.setTextColor(0);
+
+    y += rowH;
   });
 
   y += 4;
   doc.setDrawColor(42, 120, 95); doc.line(14, y, W - 14, y); y += 6;
   doc.setFont('helvetica', 'bold');
-  doc.text('TOTAL', cols[0], y);
-  doc.text(totalQty.toLocaleString('pt-BR', { maximumFractionDigits: 3 }), cols[3], y, { align: 'right' });
+  doc.text('TOTAL', cols[1], y);
+  doc.text(totalQty.toLocaleString('pt-BR', { maximumFractionDigits: 3 }), cols[4], y, { align: 'right' });
   doc.text(totalGasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), cols[6], y, { align: 'right' });
 
   doc.save(`relatorio_volumes_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`);
@@ -404,19 +422,16 @@ export default function RelatorioXML() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border">
+                    <tr className="border-b border-border bg-muted/30">
                       <th className="text-left py-2.5 px-3 text-xs font-medium text-muted-foreground">#</th>
                       <th className="text-left py-2.5 px-3 text-xs font-medium text-muted-foreground">Código</th>
-                      <th className="text-left py-2.5 px-3 text-xs font-medium text-muted-foreground">Produto</th>
-                      <th className="text-left py-2.5 px-3 text-xs font-medium text-muted-foreground">Embalagem</th>
-                      <th className="text-center py-2.5 px-3 text-xs font-medium text-muted-foreground">UN</th>
+                      <th className="text-left py-2.5 px-3 text-xs font-medium text-muted-foreground">Produto / Embalagem / UN</th>
                       <th className="text-right py-2.5 px-3 text-xs font-medium text-muted-foreground cursor-pointer select-none" onClick={() => toggleSort('total_qty')}>
                         Qtd. Total <SortIcon col="total_qty" sortCol={sortCol} sortDir={sortDir} />
                       </th>
                       <th className="text-right py-2.5 px-3 text-xs font-medium text-muted-foreground">Entradas</th>
-                      <th className="text-left py-2.5 px-3 text-xs font-medium text-muted-foreground">Pertence</th>
                       <th className="text-right py-2.5 px-3 text-xs font-medium text-muted-foreground cursor-pointer select-none" onClick={() => toggleSort('valor_total_gasto')}>
-                        Valor Total <SortIcon col="valor_total_gasto" sortCol={sortCol} sortDir={sortDir} />
+                        Vl. Total <SortIcon col="valor_total_gasto" sortCol={sortCol} sortDir={sortDir} />
                       </th>
                       <th className="text-right py-2.5 px-3 text-xs font-medium text-muted-foreground cursor-pointer select-none" onClick={() => toggleSort('custo_medio')}>
                         Custo Médio <SortIcon col="custo_medio" sortCol={sortCol} sortDir={sortDir} />
@@ -429,34 +444,43 @@ export default function RelatorioXML() {
                       const pct = totalQty > 0 ? ((row.total_qty / totalQty) * 100).toFixed(1) : '0';
                       return (
                         <tr key={i} className="border-b border-border last:border-0 hover:bg-muted/40 transition-colors">
-                          <td className="py-2.5 px-3 text-muted-foreground">{i + 1}</td>
-                          <td className="py-2.5 px-3 font-mono text-xs">{row.codigo || '-'}</td>
-                          <td className="py-2.5 px-3 font-medium max-w-[200px] truncate">{row.descricao}</td>
-                          <td className="py-2.5 px-3"><Badge variant="secondary" className="text-xs font-normal">{row.embalagem || '-'}</Badge></td>
-                          <td className="py-2.5 px-3 text-center text-xs">{row.unidade || '-'}</td>
-                          <td className="py-2.5 px-3 text-right font-mono font-semibold">
+                          <td className="py-3 px-3 text-muted-foreground align-top">{i + 1}</td>
+                          <td className="py-3 px-3 font-mono text-xs align-top">{row.codigo || '-'}</td>
+                          <td className="py-3 px-3 align-top">
+                            <p className="font-semibold text-sm">{row.descricao}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <Badge variant="secondary" className="text-xs font-normal">{row.embalagem || '-'}</Badge>
+                              <span className="text-xs text-muted-foreground">{row.unidade || '-'}</span>
+                            </div>
+                            {row.nfs_pertencentes && (
+                              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                <span className="font-medium text-foreground">NFs: </span>
+                                {row.nfs_pertencentes}
+                              </p>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-semibold align-top">
                             {row.total_qty.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}
                           </td>
-                          <td className="py-2.5 px-3 text-right"><Badge variant="outline">{row.count}</Badge></td>
-                          <td className="py-2.5 px-3 max-w-[160px] truncate text-xs text-muted-foreground" title={row.nfs_pertencentes}>
-                            {row.nfs_pertencentes || '-'}
+                          <td className="py-3 px-3 text-right align-top">
+                            <Badge variant="outline">{row.count}</Badge>
                           </td>
-                          <td className="py-2.5 px-3 text-right font-medium text-primary">
+                          <td className="py-3 px-3 text-right font-medium text-primary align-top">
                             {row.valor_total_gasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                           </td>
-                          <td className="py-2.5 px-3 text-right text-muted-foreground">
+                          <td className="py-3 px-3 text-right text-muted-foreground align-top">
                             {row.custo_medio > 0 ? row.custo_medio.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '-'}
                           </td>
-                          <td className="py-2.5 px-3 text-right text-muted-foreground">{pct}%</td>
+                          <td className="py-3 px-3 text-right text-muted-foreground align-top">{pct}%</td>
                         </tr>
                       );
                     })}
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-border font-bold bg-muted/30">
-                      <td colSpan={5} className="py-3 px-3">TOTAL</td>
+                      <td colSpan={3} className="py-3 px-3">TOTAL</td>
                       <td className="py-3 px-3 text-right font-mono text-primary">{totalQty.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}</td>
-                      <td colSpan={2} />
+                      <td />
                       <td className="py-3 px-3 text-right text-primary">{totalGasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
                       <td colSpan={2} />
                     </tr>
