@@ -64,8 +64,14 @@ export default function ImportarXML() {
           // PDF generated but upload failed — still save NF
         }
 
-        // 5. Save NF to database (create or update)
-        const existing = await base44.entities.NotaFiscal.filter({ numero_nf: nfData.numero_nf });
+        // 5. Save NF to database — check by chave_acesso to prevent duplicates
+        if (nfData.chave_acesso) {
+          const existing = await base44.entities.NotaFiscal.filter({ chave_acesso: nfData.chave_acesso });
+          if (existing && existing.length > 0) {
+            updateStatus(i, { status: 'error', errorMessage: 'Nota Fiscal já importada anteriormente.' });
+            continue;
+          }
+        }
 
         const payload = {
           ...nfData,
@@ -74,11 +80,7 @@ export default function ImportarXML() {
           ...(pdfUrl ? { arquivo_pdf_url: pdfUrl } : {}),
         };
 
-        if (existing && existing.length > 0) {
-          await base44.entities.NotaFiscal.update(existing[0].id, payload);
-        } else {
-          await base44.entities.NotaFiscal.create(payload);
-        }
+        await base44.entities.NotaFiscal.create(payload);
 
         updateStatus(i, {
           status: 'success',

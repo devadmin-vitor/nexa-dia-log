@@ -2,9 +2,11 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { FileDown, Package, ChevronRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 function formatDate(dateStr) {
   if (!dateStr) return '-';
@@ -12,24 +14,30 @@ function formatDate(dateStr) {
   catch { return dateStr.substring(0, 10).split('-').reverse().join('/'); }
 }
 
-function formatCNPJ(cnpj) {
-  if (!cnpj) return '-';
-  const n = cnpj.replace(/\D/g, '');
-  if (n.length === 14) return n.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-  return cnpj;
-}
-
-export default function NFCard({ nf, onClick }) {
+export default function NFCard({ nf, onClick, isSelected, onSelect }) {
   const totalQty = (nf.itens || []).reduce((s, i) => s + (i.quantidade || 0), 0);
 
   return (
     <Card
-      className="cursor-pointer hover:shadow-md transition-all border hover:border-primary/30"
+      className={cn(
+        "cursor-pointer transition-all border",
+        isSelected
+          ? "border-primary bg-accent/40 shadow-sm"
+          : "hover:shadow-md hover:border-primary/30"
+      )}
       onClick={onClick}
     >
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
+            {onSelect !== undefined && (
+              <div className="mt-1 shrink-0" onClick={e => e.stopPropagation()}>
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => onSelect(nf.id)}
+                />
+              </div>
+            )}
             <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center shrink-0 mt-0.5">
               <Package className="w-5 h-5 text-accent-foreground" />
             </div>
