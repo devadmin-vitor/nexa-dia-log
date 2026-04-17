@@ -6,8 +6,23 @@ import {
 } from '@/components/ui/alert-dialog';
 import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 
-export default function DivergenciaDialog({ open, onOpenChange, divergencias, onConfirmar, onCancelar }) {
+export default function DivergenciaDialog({ open, onOpenChange, divergencias, onConfirmar, onCancelar, is2aConferencia }) {
   const temDivergencia = divergencias && divergencias.length > 0;
+
+  const labelEsperado = is2aConferencia ? '1ª Conf.' : 'Esperado (NF)';
+  const labelConferido = is2aConferencia ? '2ª Conf.' : 'Conferido';
+
+  const descricaoDivergencia = is2aConferencia
+    ? 'As quantidades da 2ª conferência diferem da 1ª conferência:'
+    : 'Foram encontradas diferenças entre o físico conferido e o esperado pelas notas fiscais:';
+
+  const descricaoOk = is2aConferencia
+    ? 'A 2ª conferência bate com a 1ª conferência. Deseja finalizar e fechar o bônus?'
+    : 'As quantidades conferidas batem com o esperado pelas notas fiscais. Deseja avançar para a 2ª conferência?';
+
+  const labelConfirmar = temDivergencia
+    ? 'Forçar Fechamento'
+    : is2aConferencia ? 'Finalizar Bônus' : 'Concluir 1ª Conferência';
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -24,21 +39,19 @@ export default function DivergenciaDialog({ open, onOpenChange, divergencias, on
               </div>
             )}
             <AlertDialogTitle className="text-lg">
-              {temDivergencia ? 'Divergência Encontrada' : 'Conferência OK'}
+              {temDivergencia ? 'Divergência Encontrada' : is2aConferencia ? '2ª Conferência OK' : '1ª Conferência OK'}
             </AlertDialogTitle>
           </div>
           <AlertDialogDescription asChild>
             <div className="space-y-3">
               {temDivergencia ? (
                 <>
-                  <p className="text-sm text-muted-foreground">
-                    Foram encontradas diferenças entre o físico conferido e o esperado pelas notas fiscais:
-                  </p>
+                  <p className="text-sm text-muted-foreground">{descricaoDivergencia}</p>
                   <div className="rounded-lg border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/20 overflow-hidden">
                     <div className="grid grid-cols-4 px-3 py-2 bg-orange-100/70 dark:bg-orange-900/30 text-[10px] font-bold uppercase tracking-wider text-orange-700 dark:text-orange-400">
                       <span className="col-span-2">Produto</span>
-                      <span className="text-right">Esperado</span>
-                      <span className="text-right">Conferido</span>
+                      <span className="text-right">{labelEsperado}</span>
+                      <span className="text-right">{labelConferido}</span>
                     </div>
                     <div className="divide-y divide-orange-100 dark:divide-orange-900/40 max-h-48 overflow-y-auto">
                       {divergencias.map((d, i) => (
@@ -56,13 +69,11 @@ export default function DivergenciaDialog({ open, onOpenChange, divergencias, on
                     </div>
                   </div>
                   <p className="text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
-                    ⚠️ Deseja <strong>forçar o fechamento</strong> e registrar a quebra? O bônus será salvo com status <strong>"divergente"</strong>.
+                    ⚠️ Deseja <strong>forçar o fechamento</strong> e registrar a quebra? O bônus será salvo como <strong>"divergente"</strong>.
                   </p>
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  As quantidades conferidas batem com o esperado pelas notas fiscais. Deseja finalizar a conferência?
-                </p>
+                <p className="text-sm text-muted-foreground">{descricaoOk}</p>
               )}
             </div>
           </AlertDialogDescription>
@@ -78,7 +89,7 @@ export default function DivergenciaDialog({ open, onOpenChange, divergencias, on
               : "bg-emerald-600 hover:bg-emerald-700 text-white"
             }
           >
-            {temDivergencia ? 'Forçar Fechamento' : 'Finalizar Conferência'}
+            {labelConfirmar}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

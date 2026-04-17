@@ -10,6 +10,7 @@
       "type": "string",
       "enum": [
         "em_conferencia",
+        "aguardando_2a_conferencia",
         "conferido",
         "divergente"
       ],
@@ -62,10 +63,49 @@
           },
           "norma_palete": {
             "type": "number"
+          },
+          "tipo_estoque": {
+            "type": "string"
           }
         }
       },
-      "description": "Itens conferidos na contagem cega"
+      "description": "Itens conferidos na 1\u00aa confer\u00eancia"
+    },
+    "itens_conferidos_2": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ean": {
+            "type": "string"
+          },
+          "descricao": {
+            "type": "string"
+          },
+          "validade": {
+            "type": "string"
+          },
+          "qtd_caixas": {
+            "type": "number"
+          },
+          "qtd_paletes": {
+            "type": "string"
+          },
+          "paletes_cheios": {
+            "type": "number"
+          },
+          "caixas_soltas": {
+            "type": "number"
+          },
+          "norma_palete": {
+            "type": "number"
+          },
+          "tipo_estoque": {
+            "type": "string"
+          }
+        }
+      },
+      "description": "Itens conferidos na 2\u00aa confer\u00eancia"
     },
     "itens_esperados": {
       "type": "array",
@@ -91,7 +131,11 @@
     },
     "data_conferencia": {
       "type": "string",
-      "description": "Data/hora da finaliza\u00e7\u00e3o da confer\u00eancia"
+      "description": "Data/hora da finaliza\u00e7\u00e3o da 1\u00aa confer\u00eancia"
+    },
+    "data_conferencia_2": {
+      "type": "string",
+      "description": "Data/hora da finaliza\u00e7\u00e3o da 2\u00aa confer\u00eancia"
     }
   },
   "required": [

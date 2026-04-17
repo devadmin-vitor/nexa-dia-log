@@ -38,6 +38,7 @@ function gerarId() {
 
 // ─── Componente Principal ────────────────────────────────────────────────────
 export default function BonusConferencia({ bonus, onConferenciaConcluida, onVoltar }) {
+  const is2aConferencia = bonus?.status === 'aguardando_2a_conferencia';
   // Estados do formulário
   const [currentEan, setCurrentEan] = useState('');
   const [currentQtdBoa, setCurrentQtdBoa] = useState('');
@@ -179,34 +180,59 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
       return;
     }
 
-    // Soma TOTAL (boas + avariadas) por EAN para bater com o XML
+    // Soma TOTAL (boas + avariadas) por EAN
     const totalConferido = {};
     itensConferidos.forEach(item => {
       totalConferido[item.ean] = (totalConferido[item.ean] || 0) + item.qtd_caixas;
     });
 
-    const totalEsperado = {};
-    const descricaoMap = {};
-    (bonus?.itens_esperados || []).forEach(item => {
-      totalEsperado[item.ean] = (totalEsperado[item.ean] || 0) + item.qtd_esperada;
-      descricaoMap[item.ean] = item.descricao;
-    });
-
-    // Divergência: apenas quando (boas + avarias) ≠ esperado
-    const allEans = new Set([...Object.keys(totalConferido), ...Object.keys(totalEsperado)]);
     const divs = [];
-    allEans.forEach(ean => {
-      const conf = totalConferido[ean] || 0;
-      const esp = totalEsperado[ean] || 0;
-      if (conf !== esp) {
-        divs.push({
-          ean,
-          descricao: descricaoMap[ean] || itensConferidos.find(i => i.ean === ean)?.descricao || ean,
-          esperado: esp,
-          conferido: conf,
-        });
-      }
-    });
+
+    if (is2aConferencia) {
+      // 2ª conferência: compara com a 1ª conferência
+      const totalConferido1 = {};
+      const descricaoMap = {};
+      (bonus?.itens_conferidos || []).forEach(item => {
+        totalConferido1[item.ean] = (totalConferido1[item.ean] || 0) + item.qtd_caixas;
+        descricaoMap[item.ean] = item.descricao;
+      });
+
+      const allEans = new Set([...Object.keys(totalConferido), ...Object.keys(totalConferido1)]);
+      allEans.forEach(ean => {
+        const conf2 = totalConferido[ean] || 0;
+        const conf1 = totalConferido1[ean] || 0;
+        if (conf2 !== conf1) {
+          divs.push({
+            ean,
+            descricao: descricaoMap[ean] || itensConferidos.find(i => i.ean === ean)?.descricao || ean,
+            esperado: conf1,
+            conferido: conf2,
+          });
+        }
+      });
+    } else {
+      // 1ª conferência: compara com o esperado das NFs
+      const totalEsperado = {};
+      const descricaoMap = {};
+      (bonus?.itens_esperados || []).forEach(item => {
+        totalEsperado[item.ean] = (totalEsperado[item.ean] || 0) + item.qtd_esperada;
+        descricaoMap[item.ean] = item.descricao;
+      });
+
+      const allEans = new Set([...Object.keys(totalConferido), ...Object.keys(totalEsperado)]);
+      allEans.forEach(ean => {
+        const conf = totalConferido[ean] || 0;
+        const esp = totalEsperado[ean] || 0;
+        if (conf !== esp) {
+          divs.push({
+            ean,
+            descricao: descricaoMap[ean] || itensConferidos.find(i => i.ean === ean)?.descricao || ean,
+            esperado: esp,
+            conferido: conf,
+          });
+        }
+      });
+    }
 
     setDivergencias(divs);
     setDialogAberto(true);
@@ -216,23 +242,39 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
   const handleConfirmarFechamento = async () => {
     setSalvando(true);
     try {
-      const status = divergencias.length > 0 ? 'divergente' : 'conferido';
+      let updatePayload;
 
-      await base44.entities.BonusRecebimento.update(bonus.id, {
-        status,
-        itens_conferidos: itensConferidos,
-        data_conferencia: new Date().toISOString(),
-      });
-
-      setDialogAberto(false);
-
-      if (divergencias.length > 0) {
-        toast.warning('Bônus finalizado com divergências e registrado para auditoria.', { duration: 4000 });
+      if (is2aConferencia) {
+        // 2ª conferência: finaliza o bônus
+        const status = divergencias.length > 0 ? 'divergente' : 'conferido';
+        updatePayload = {
+          status,
+          itens_conferidos_2: itensConferidos,
+          data_conferencia_2: new Date().toISOString(),
+        };
       } else {
-        toast.success('Conferência concluída com sucesso!', { duration: 3000 });
+        // 1ª conferência: aguarda a 2ª
+        updatePayload = {
+          status: 'aguardando_2a_conferencia',
+          itens_conferidos: itensConferidos,
+          data_conferencia: new Date().toISOString(),
+        };
       }
 
-      onConferenciaConcluida?.(itensConferidos, status);
+      await base44.entities.BonusRecebimento.update(bonus.id, updatePayload);
+      setDialogAberto(false);
+
+      if (is2aConferencia) {
+        if (divergencias.length > 0) {
+          toast.warning('2ª conferência com divergências. Bônus salvo como divergente.', { duration: 4000 });
+        } else {
+          toast.success('Dupla conferência concluída com sucesso!', { duration: 3000 });
+        }
+      } else {
+        toast.success('1ª conferência concluída! Aguardando 2ª conferência.', { duration: 3500 });
+      }
+
+      onConferenciaConcluida?.(itensConferidos, updatePayload.status);
     } catch (err) {
       toast.error('Erro ao salvar conferência: ' + err.message);
     } finally {
@@ -267,11 +309,18 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold tracking-tight">Conferência Cega</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl font-bold tracking-tight">
+                {is2aConferencia ? '2ª Conferência Cega' : '1ª Conferência Cega'}
+              </h1>
               <Badge variant="outline" className="font-mono text-xs">
                 Bônus #{bonus?.numero_bonus}
               </Badge>
+              {is2aConferencia && (
+                <Badge className="text-[10px] bg-purple-100 text-purple-700 border border-purple-300 dark:bg-purple-900/30 dark:text-purple-400">
+                  Verificação dupla
+                </Badge>
+              )}
             </div>
             <p className="text-sm text-muted-foreground mt-0.5">
               {bonus?.emitente_nome} — {bonus?.notas_fiscais_ids?.length || 0} NF(s) vinculada(s)
@@ -323,8 +372,8 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
               <ScanBarcode className="w-3.5 h-3.5 text-primary-foreground" />
             </div>
             <p className="font-semibold text-sm">Leitura de Produto</p>
-            <Badge className="ml-auto text-[10px] bg-primary/10 text-primary border-primary/20 hover:bg-primary/10">
-              Conferência Cega
+            <Badge className={`ml-auto text-[10px] border hover:bg-transparent ${is2aConferencia ? 'bg-purple-100 text-purple-700 border-purple-300 dark:bg-purple-900/30 dark:text-purple-400' : 'bg-primary/10 text-primary border-primary/20'}`}>
+              {is2aConferencia ? '2ª Conferência' : '1ª Conferência'}
             </Badge>
           </div>
         </CardHeader>
@@ -538,7 +587,7 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
             className="gap-2.5 px-8 bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/20 disabled:opacity-50 transition-all ml-auto"
           >
             <CheckCheck className="w-5 h-5" />
-            {salvando ? 'Salvando...' : 'Finalizar Conferência'}
+            {salvando ? 'Salvando...' : is2aConferencia ? 'Finalizar 2ª Conferência' : 'Finalizar 1ª Conferência'}
           </Button>
         </div>
       </div>
@@ -550,6 +599,7 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
         divergencias={divergencias}
         onConfirmar={handleConfirmarFechamento}
         onCancelar={() => setDialogAberto(false)}
+        is2aConferencia={is2aConferencia}
       />
     </div>
   );

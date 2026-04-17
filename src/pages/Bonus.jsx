@@ -22,8 +22,13 @@ import NovoBonusDialog from '@/components/bonus/NovoBonusDialog';
 
 const STATUS_CONFIG = {
   em_conferencia: {
-    label: 'Em Conferência',
+    label: '1ª Conferência',
     className: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800',
+    icon: Clock,
+  },
+  aguardando_2a_conferencia: {
+    label: '2ª Conferência',
+    className: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800',
     icon: Clock,
   },
   conferido: {
@@ -105,9 +110,10 @@ export default function Bonus() {
 
       {/* Stats rápidas */}
       {bonusList.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           {[
-            { label: 'Em Conferência', status: 'em_conferencia', color: 'text-blue-600' },
+            { label: '1ª Conferência', status: 'em_conferencia', color: 'text-blue-600' },
+            { label: '2ª Conferência', status: 'aguardando_2a_conferencia', color: 'text-purple-600' },
             { label: 'Conferidos', status: 'conferido', color: 'text-emerald-600' },
             { label: 'Divergentes', status: 'divergente', color: 'text-orange-600' },
           ].map(({ label, status, color }) => (
