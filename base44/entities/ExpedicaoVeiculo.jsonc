@@ -1,0 +1,40 @@
+{
+  "name": "ExpedicaoVeiculo",
+  "type": "object",
+  "properties": {
+    "data_expedicao": {
+      "type": "string",
+      "description": "Data da expedi\u00e7\u00e3o (YYYY-MM-DD)"
+    },
+    "placa": {
+      "type": "string",
+      "description": "Placa do ve\u00edculo"
+    },
+    "nota_fiscal_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs das notas fiscais vinculadas"
+    },
+    "peso_total_kg": {
+      "type": "number",
+      "description": "Peso total expedido em kg"
+    },
+    "participantes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Nomes dos participantes da expedi\u00e7\u00e3o"
+    },
+    "observacao": {
+      "type": "string",
+      "description": "Observa\u00e7\u00f5es sobre a expedi\u00e7\u00e3o"
+    }
+  },
+  "required": [
+    "data_expedicao",
+    "placa"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "DashboardConfig",
+  "type": "object",
+  "properties": {
+    "valor_por_kg": {
+      "type": "number",
+      "default": 0.01,
+      "description": "Valor de premia\u00e7\u00e3o por kg expedido (padr\u00e3o: R$ 0,01)"
+    },
+    "meta_premiacao": {
+      "type": "number",
+      "description": "Meta de premia\u00e7\u00e3o em reais para liberar pr\u00eamio"
+    },
+    "meta_veiculos_dia": {
+      "type": "number",
+      "default": 8,
+      "description": "Meta de ve\u00edculos expedidos por dia"
+    }
+  },
+  "required": []
+}

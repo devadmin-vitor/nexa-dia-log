@@ -13,6 +13,8 @@ import NotasFiscais from '@/pages/NotasFiscais';
 import RelatorioXML from '@/pages/RelatorioXML';
 import Bonus from '@/pages/Bonus';
 import DadosLogisticos from '@/pages/DadosLogisticos';
+import DashboardExpedicao from '@/pages/DashboardExpedicao';
+import Expedicoes from '@/pages/Expedicoes';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -38,6 +40,8 @@ const AuthenticatedApp = () => {
         <Route path="/relatorio" element={<RelatorioXML />} />
         <Route path="/bonus" element={<Bonus />} />
         <Route path="/logistica" element={<DadosLogisticos />} />
+        <Route path="/dashboard" element={<DashboardExpedicao />} />
+        <Route path="/expedicoes" element={<Expedicoes />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
