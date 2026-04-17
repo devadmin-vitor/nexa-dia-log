@@ -5,10 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import {
   ScanBarcode, Plus, CheckCheck, ArrowLeft, ClipboardList,
-  FileText, AlertTriangle,
+  FileText, AlertTriangle, FileDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -16,6 +15,7 @@ import { ptBR } from 'date-fns/locale';
 import EanInputField from './EanInputField';
 import ItensConferidosTable from './ItensConferidosTable';
 import DivergenciaDialog from './DivergenciaDialog';
+import { gerarTermoAvariaPdf } from '@/lib/termoAvariaPdf';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function calcularPaletes(qtd, norma) {
@@ -40,7 +40,8 @@ function gerarId() {
 export default function BonusConferencia({ bonus, onConferenciaConcluida, onVoltar }) {
   // Estados do formulário
   const [currentEan, setCurrentEan] = useState('');
-  const [currentQtd, setCurrentQtd] = useState('');
+  const [currentQtdBoa, setCurrentQtdBoa] = useState('');
+  const [currentQtdAvaria, setCurrentQtdAvaria] = useState('');
   const [currentValidade, setCurrentValidade] = useState('');
 
   // Produto encontrado pelo EAN
@@ -57,7 +58,8 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
   const [salvando, setSalvando] = useState(false);
 
   const eanRef = useRef(null);
-  const qtdRef = useRef(null);
+  const qtdBoaRef = useRef(null);
+  const qtdAvariaRef = useRef(null);
 
   // ── Busca produto pelo EAN ───────────────────────────────────────────────
   const buscarProduto = useCallback(async (ean) => {
@@ -72,8 +74,7 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
       const resultados = await base44.entities.ProdutoLogistica.filter({ ean: trimmed });
       if (resultados && resultados.length > 0) {
         setProduto(resultados[0]);
-        // Foca no campo de quantidade
-        setTimeout(() => qtdRef.current?.focus(), 80);
+        setTimeout(() => qtdBoaRef.current?.focus(), 80);
       } else {
         setErroEan('Produto não cadastrado. Verifique o EAN.');
       }
@@ -87,16 +88,17 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
   // ── Incluir item ────────────────────────────────────────────────────────
   const handleIncluir = () => {
     const ean = currentEan.trim();
-    const qtd = parseInt(currentQtd, 10);
+    const qtdBoa = parseInt(currentQtdBoa, 10) || 0;
+    const qtdAvaria = parseInt(currentQtdAvaria, 10) || 0;
 
     if (!ean) {
       toast.error('Informe o código EAN.');
       eanRef.current?.focus();
       return;
     }
-    if (!qtd || qtd <= 0) {
-      toast.error('Informe uma quantidade válida.');
-      qtdRef.current?.focus();
+    if (qtdBoa <= 0 && qtdAvaria <= 0) {
+      toast.error('Informe ao menos Qtd Boa ou Qtd Avariada.');
+      qtdBoaRef.current?.focus();
       return;
     }
     if (!currentValidade) {
@@ -109,27 +111,55 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
       return;
     }
 
-    const norma = (produto.lastro || 0) * (produto.camada || 0);
-    const { paletes_cheios, caixas_soltas, qtd_paletes } = calcularPaletes(qtd, norma);
+    const novosItens = [];
 
-    const novoItem = {
-      id: gerarId(),
-      ean,
-      descricao: produto.descricao,
-      validade: currentValidade,
-      qtd_caixas: qtd,
-      norma_palete: norma,
-      paletes_cheios,
-      caixas_soltas,
-      qtd_paletes,
-    };
+    // ── Item BOM: passa pelo cálculo de paletização ──────────────────────
+    if (qtdBoa > 0) {
+      const norma = (produto.lastro || 0) * (produto.camada || 0);
+      const { paletes_cheios, caixas_soltas, qtd_paletes } = calcularPaletes(qtdBoa, norma);
+      novosItens.push({
+        id: gerarId(),
+        ean,
+        descricao: produto.descricao,
+        validade: currentValidade,
+        qtd_caixas: qtdBoa,
+        norma_palete: norma,
+        paletes_cheios,
+        caixas_soltas,
+        qtd_paletes,
+        tipo_estoque: 'BOM',
+        endereco_id: null,
+      });
+    }
 
-    setItensConferidos(prev => [...prev, novoItem]);
-    toast.success(`${produto.descricao} — ${qtd} cx incluídas`, { duration: 2000 });
+    // ── Item AVARIA: sem paletização, destino fixo de quarentena ────────
+    if (qtdAvaria > 0) {
+      novosItens.push({
+        id: gerarId(),
+        ean,
+        descricao: produto.descricao,
+        validade: currentValidade,
+        qtd_caixas: qtdAvaria,
+        norma_palete: 0,
+        paletes_cheios: 0,
+        caixas_soltas: qtdAvaria,
+        qtd_paletes: `${qtdAvaria} cx`,
+        tipo_estoque: 'AVARIA',
+        endereco_id: 'DOCA-AVARIAS',
+      });
+    }
+
+    setItensConferidos(prev => [...prev, ...novosItens]);
+
+    const partes = [];
+    if (qtdBoa > 0) partes.push(`${qtdBoa} boas`);
+    if (qtdAvaria > 0) partes.push(`${qtdAvaria} avariadas`);
+    toast.success(`${produto.descricao} — ${partes.join(' + ')}`, { duration: 2500 });
 
     // Limpar e retornar foco ao EAN
     setCurrentEan('');
-    setCurrentQtd('');
+    setCurrentQtdBoa('');
+    setCurrentQtdAvaria('');
     setCurrentValidade('');
     setProduto(null);
     setErroEan('');
@@ -149,13 +179,12 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
       return;
     }
 
-    // Agrupar conferidos por EAN
+    // Soma TOTAL (boas + avariadas) por EAN para bater com o XML
     const totalConferido = {};
     itensConferidos.forEach(item => {
       totalConferido[item.ean] = (totalConferido[item.ean] || 0) + item.qtd_caixas;
     });
 
-    // Montar mapa de esperado a partir do bonus
     const totalEsperado = {};
     const descricaoMap = {};
     (bonus?.itens_esperados || []).forEach(item => {
@@ -163,7 +192,7 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
       descricaoMap[item.ean] = item.descricao;
     });
 
-    // Detectar divergências
+    // Divergência: apenas quando (boas + avarias) ≠ esperado
     const allEans = new Set([...Object.keys(totalConferido), ...Object.keys(totalEsperado)]);
     const divs = [];
     allEans.forEach(ean => {
@@ -211,9 +240,22 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
     }
   };
 
+  // ── Gerar PDF do Termo de Avaria ─────────────────────────────────────────
+  const handleGerarTermoPdf = () => {
+    const itensAvariados = itensConferidos.filter(i => i.tipo_estoque === 'AVARIA');
+    if (itensAvariados.length === 0) return;
+
+    const doc = gerarTermoAvariaPdf({ bonus, itensAvariados });
+    doc.save(`Termo_Avaria_Bonus_${bonus?.numero_bonus || 'SN'}.pdf`);
+    toast.success('Termo de Avaria gerado com sucesso!');
+  };
+
   // ── Totais rápidos ───────────────────────────────────────────────────────
-  const totalCaixas = itensConferidos.reduce((acc, i) => acc + i.qtd_caixas, 0);
+  const totalBoas = itensConferidos.filter(i => i.tipo_estoque === 'BOM').reduce((acc, i) => acc + i.qtd_caixas, 0);
+  const totalAvarias = itensConferidos.filter(i => i.tipo_estoque === 'AVARIA').reduce((acc, i) => acc + i.qtd_caixas, 0);
+  const totalCaixas = totalBoas + totalAvarias;
   const totalEsperadoGeral = (bonus?.itens_esperados || []).reduce((acc, i) => acc + i.qtd_esperada, 0);
+  const temAvaria = itensConferidos.some(i => i.tipo_estoque === 'AVARIA');
 
   return (
     <div className="flex flex-col gap-0 min-h-full">
@@ -240,12 +282,24 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
         {/* Mini estatísticas */}
         <div className="hidden sm:flex items-center gap-4 text-right">
           <div>
-            <p className="text-xs text-muted-foreground">Conferido</p>
+            <p className="text-xs text-muted-foreground">Boas</p>
             <p className="text-lg font-bold tabular-nums text-primary">
-              {totalCaixas.toLocaleString('pt-BR')}
+              {totalBoas.toLocaleString('pt-BR')}
               <span className="text-xs font-normal text-muted-foreground ml-1">cx</span>
             </p>
           </div>
+          {totalAvarias > 0 && (
+            <>
+              <div className="w-px h-8 bg-border" />
+              <div>
+                <p className="text-xs text-muted-foreground">Avarias</p>
+                <p className="text-lg font-bold tabular-nums text-red-600">
+                  {totalAvarias.toLocaleString('pt-BR')}
+                  <span className="text-xs font-normal text-muted-foreground ml-1">cx</span>
+                </p>
+              </div>
+            </>
+          )}
           {totalEsperadoGeral > 0 && (
             <>
               <div className="w-px h-8 bg-border" />
@@ -261,7 +315,7 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
         </div>
       </div>
 
-      {/* ── Formulário de leitura FIXO ─────────────────────────── */}
+      {/* ── Formulário de leitura ───────────────────────────────── */}
       <Card className="border-2 border-primary/30 bg-gradient-to-br from-primary/5 via-background to-background shadow-lg shadow-primary/5 mb-6">
         <CardHeader className="pb-3 pt-4 px-5">
           <div className="flex items-center gap-2">
@@ -275,6 +329,7 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
           </div>
         </CardHeader>
         <CardContent className="px-5 pb-5">
+          {/* Linha 1: EAN + Qtd Boa + Qtd Avariada */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
 
             {/* EAN */}
@@ -296,50 +351,83 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
               />
             </div>
 
-            {/* Quantidade */}
+            {/* Qtd Boa */}
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Quantidade Conferida
+                Qtd Boa <span className="text-primary">(Vendável)</span>
               </Label>
               <Input
-                ref={qtdRef}
+                ref={qtdBoaRef}
                 type="number"
-                min={1}
-                value={currentQtd}
-                onChange={(e) => setCurrentQtd(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleIncluir()}
-                placeholder="Ex: 120"
+                min={0}
+                value={currentQtdBoa}
+                onChange={(e) => setCurrentQtdBoa(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    qtdAvariaRef.current?.focus();
+                  }
+                }}
+                placeholder="Ex: 98"
                 className="h-11 tabular-nums text-sm"
               />
             </div>
 
-            {/* Validade */}
+            {/* Qtd Avariada + Botão */}
             <div className="flex flex-col gap-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Data de Validade
+                Qtd Avariada <span className="text-red-500">(Opcional)</span>
               </Label>
               <div className="flex gap-2">
                 <Input
-                  type="date"
-                  value={currentValidade}
-                  onChange={(e) => setCurrentValidade(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleIncluir()}
-                  className="h-11 flex-1 text-sm"
+                  ref={qtdAvariaRef}
+                  type="number"
+                  min={0}
+                  value={currentQtdAvaria}
+                  onChange={(e) => setCurrentQtdAvaria(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      // avança para validade se vazio, senão fica na avaria
+                      document.getElementById('input-validade')?.focus();
+                    }
+                  }}
+                  placeholder="Ex: 2"
+                  className="h-11 tabular-nums text-sm border-red-200 focus-visible:ring-red-400/40 flex-1"
                 />
-                <Button
-                  onClick={handleIncluir}
-                  className="h-11 px-5 gap-2 shrink-0 bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="hidden sm:inline">Incluir</span>
-                </Button>
               </div>
             </div>
           </div>
 
-          {/* Dica de atalho */}
+          {/* Linha 2: Validade + Botão Incluir */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end mt-4">
+            <div className="sm:col-span-2 flex flex-col gap-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Data de Validade
+              </Label>
+              <Input
+                id="input-validade"
+                type="date"
+                value={currentValidade}
+                onChange={(e) => setCurrentValidade(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleIncluir()}
+                className="h-11 text-sm"
+              />
+            </div>
+            <div className="flex items-end">
+              <Button
+                onClick={handleIncluir}
+                className="h-11 w-full gap-2 bg-primary hover:bg-primary/90 shadow-md shadow-primary/20 transition-all"
+              >
+                <Plus className="w-4 h-4" />
+                Incluir
+              </Button>
+            </div>
+          </div>
+
           <p className="text-[10px] text-muted-foreground/60 mt-3">
-            💡 Pressione <kbd className="px-1.5 py-0.5 bg-muted border border-border rounded text-[9px] font-mono">Enter</kbd> em qualquer campo para avançar ou incluir.
+            💡 Pressione <kbd className="px-1.5 py-0.5 bg-muted border border-border rounded text-[9px] font-mono">Enter</kbd> para navegar entre campos.
+            Qtd Avariada é opcional — deixe em branco se não houver dano.
           </p>
         </CardContent>
       </Card>
@@ -354,12 +442,34 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
               {itensConferidos.length}
             </Badge>
           )}
+          {temAvaria && (
+            <Badge className="text-[10px] bg-red-100 text-red-700 border border-red-300 dark:bg-red-900/30 dark:text-red-400 gap-1">
+              <AlertTriangle className="w-2.5 h-2.5" />
+              Avarias detectadas
+            </Badge>
+          )}
         </div>
-        {totalCaixas > 0 && (
-          <p className="text-xs text-muted-foreground tabular-nums">
-            Total: <span className="font-bold text-foreground">{totalCaixas.toLocaleString('pt-BR')}</span> cx
-          </p>
-        )}
+
+        <div className="flex items-center gap-3">
+          {/* Botão Termo de Avaria */}
+          {temAvaria && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleGerarTermoPdf}
+              className="gap-2 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30"
+            >
+              <FileDown className="w-3.5 h-3.5" />
+              Termo de Avaria (PDF)
+            </Button>
+          )}
+
+          {totalCaixas > 0 && (
+            <p className="text-xs text-muted-foreground tabular-nums">
+              Total: <span className="font-bold text-foreground">{totalCaixas.toLocaleString('pt-BR')}</span> cx
+            </p>
+          )}
+        </div>
       </div>
 
       <ItensConferidosTable itens={itensConferidos} onRemover={handleRemover} />
@@ -401,13 +511,22 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
 
       {/* ── Rodapé fixo ──────────────────────────────────────── */}
       <div className="sticky bottom-0 mt-6 -mx-4 lg:-mx-8 px-4 lg:px-8 py-4 bg-background/95 backdrop-blur border-t border-border">
-        <div className="flex items-center justify-between gap-4">
-          <div className="text-xs text-muted-foreground hidden sm:block">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="text-xs text-muted-foreground hidden sm:flex items-center gap-4">
             {itensConferidos.length > 0 ? (
-              <span>
-                <span className="font-semibold text-foreground">{itensConferidos.length}</span> linha(s) ·{' '}
-                <span className="font-semibold text-foreground">{totalCaixas.toLocaleString('pt-BR')}</span> caixas conferidas
-              </span>
+              <>
+                <span>
+                  <span className="font-semibold text-foreground">{itensConferidos.length}</span> linha(s)
+                </span>
+                <span>
+                  Boas: <span className="font-semibold text-foreground">{totalBoas.toLocaleString('pt-BR')} cx</span>
+                </span>
+                {totalAvarias > 0 && (
+                  <span className="text-red-600 dark:text-red-400">
+                    Avarias: <span className="font-semibold">{totalAvarias.toLocaleString('pt-BR')} cx</span>
+                  </span>
+                )}
+              </>
             ) : (
               'Nenhum item conferido ainda'
             )}
