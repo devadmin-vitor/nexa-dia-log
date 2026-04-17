@@ -242,9 +242,12 @@ export default function DadosLogisticos() {
     [produtosNF, search, logisticaByDescricao]
   );
 
-  const cadastrados = logisticas.length;
   const totalProdutos = produtosNF.length;
-  const pendentes = totalProdutos - produtosNF.filter(p => !!logisticaByDescricao[p.descricao]).length;
+  const cadastrados = produtosNF.filter(p => {
+    const log = logisticaByDescricao[p.descricao];
+    return !!(log?.lastro && log?.camada);
+  }).length;
+  const pendentes = totalProdutos - cadastrados;
 
   function handleSalvo() {
     queryClient.invalidateQueries({ queryKey: ['produtos-logistica'] });
@@ -333,7 +336,8 @@ export default function DadosLogisticos() {
               {filtered.map((produto, idx) => {
                 const log = logisticaByDescricao[produto.descricao];
                 const norma = log ? (log.lastro || 0) * (log.camada || 0) : 0;
-                const cadastrado = !!log;
+                const temEan = !!(log?.ean || produto.ean);
+                const cadastrado = !!(log?.lastro && log?.camada);
 
                 return (
                   <TableRow
@@ -355,7 +359,7 @@ export default function DadosLogisticos() {
 
                     {/* EAN */}
                     <TableCell className="font-mono text-xs">
-                      {log?.ean || <span className="text-muted-foreground/50">—</span>}
+                      {(log?.ean || produto.ean) || <span className="text-muted-foreground/50">—</span>}
                     </TableCell>
 
                     {/* Lastro */}
