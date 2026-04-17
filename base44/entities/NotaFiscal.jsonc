@@ -38,6 +38,10 @@
       "type": "number",
       "description": "Valor total da NF"
     },
+    "peso_bruto": {
+      "type": "number",
+      "description": "Peso bruto total da NF em KG (soma dos volumes de transporte)"
+    },
     "itens": {
       "type": "array",
       "description": "Itens da nota fiscal",

@@ -55,6 +55,18 @@ export function parseNFeXML(xmlString) {
   const dataEmissao = getText(ide, 'dhEmi') || getText(ide, 'dEmi');
   const chaveAcesso = infNFe.getAttribute('Id')?.replace('NFe', '') || '';
 
+  // Peso bruto: campo qVol dentro de transp > vol
+  const transp = infNFe.querySelector('transp') || infNFe.getElementsByTagName('transp')[0];
+  let pesoBruto = 0;
+  if (transp) {
+    const volEls = transp.querySelectorAll('vol');
+    const volArray = volEls.length > 0 ? Array.from(volEls) : Array.from(transp.getElementsByTagName('vol'));
+    volArray.forEach(vol => {
+      const pb = parseFloat(getText(vol, 'pesoB') || '0');
+      pesoBruto += pb;
+    });
+  }
+
   return {
     numero_nf: numeroNF,
     serie: getText(ide, 'serie'),
@@ -65,6 +77,7 @@ export function parseNFeXML(xmlString) {
     destinatario_nome: getText(dest, 'xNome'),
     destinatario_cnpj: getText(dest, 'CNPJ') || getText(dest, 'CPF'),
     valor_total: parseFloat(getText(total, 'vNF') || '0'),
+    peso_bruto: pesoBruto,
     itens,
   };
 }
