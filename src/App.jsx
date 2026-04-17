@@ -12,6 +12,7 @@ import ImportarXML from '@/pages/ImportarXML';
 import NotasFiscais from '@/pages/NotasFiscais';
 import RelatorioXML from '@/pages/RelatorioXML';
 import Bonus from '@/pages/Bonus';
+import DadosLogisticos from '@/pages/DadosLogisticos';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -36,6 +37,7 @@ const AuthenticatedApp = () => {
         <Route path="/notas" element={<NotasFiscais />} />
         <Route path="/relatorio" element={<RelatorioXML />} />
         <Route path="/bonus" element={<Bonus />} />
+        <Route path="/logistica" element={<DadosLogisticos />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
