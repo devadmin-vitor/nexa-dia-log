@@ -25,9 +25,13 @@ function extrairProdutosNFs(notas) {
       if (!map[key]) {
         map[key] = {
           codigo: item.codigo || '',
+          ean: item.ean || '',
           descricao: item.descricao || '',
           unidade: item.unidade || '',
         };
+      } else if (!map[key].ean && item.ean) {
+        // Preenche EAN se ainda não encontrado
+        map[key].ean = item.ean;
       }
     });
   });
@@ -44,15 +48,15 @@ function EditarLogisticaDialog({ open, onOpenChange, produto, logisticaExistente
 
   const norma = (parseInt(lastro) || 0) * (parseInt(camada) || 0);
 
-  // Resetar ao abrir
+  // Resetar ao abrir — pré-preenche EAN do XML se ainda não houver registro
   React.useEffect(() => {
     if (open) {
-      setEan(logisticaExistente?.ean || '');
+      setEan(logisticaExistente?.ean || produto?.ean || '');
       setLastro(logisticaExistente?.lastro?.toString() || '');
       setCamada(logisticaExistente?.camada?.toString() || '');
       setErros({});
     }
-  }, [open, logisticaExistente]);
+  }, [open, logisticaExistente, produto]);
 
   function validar() {
     const e = {};
@@ -115,17 +119,28 @@ function EditarLogisticaDialog({ open, onOpenChange, produto, logisticaExistente
 
           {/* EAN */}
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              EAN / Cód. Barras *
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                EAN / Cód. Barras *
+              </Label>
+              {produto?.ean && (
+                <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Preenchido pelo XML
+                </span>
+              )}
+            </div>
             <Input
               value={ean}
               onChange={e => setEan(e.target.value)}
               placeholder="Ex: 7891234560010"
-              className={`font-mono ${erros.ean ? 'border-destructive' : ''}`}
+              className={`font-mono ${erros.ean ? 'border-destructive' : produto?.ean ? 'border-emerald-300 focus-visible:ring-emerald-400/40' : ''}`}
               autoFocus
             />
             {erros.ean && <p className="text-[11px] text-destructive">{erros.ean}</p>}
+            {!erros.ean && produto?.ean && (
+              <p className="text-[10px] text-muted-foreground">EAN lido do XML. Edite se necessário.</p>
+            )}
           </div>
 
           {/* Lastro + Camada lado a lado */}

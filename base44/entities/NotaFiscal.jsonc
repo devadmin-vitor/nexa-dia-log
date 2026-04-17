@@ -51,6 +51,10 @@
           "codigo": {
             "type": "string"
           },
+          "ean": {
+            "type": "string",
+            "description": "C\u00f3digo EAN/GTIN extra\u00eddo do XML"
+          },
           "descricao": {
             "type": "string"
           },

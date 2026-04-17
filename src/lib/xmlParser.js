@@ -41,8 +41,12 @@ export function parseNFeXML(xmlString) {
     // Try to extract embalagem from description or xEAN or other fields
     const embalagem = extractEmbalagem(descricao, getText(prod, 'uCom'), getText(prod, 'uTrib'));
     
+    const eanRaw = getText(prod, 'cEAN') || getText(prod, 'cEANTrib') || '';
+    const ean = (eanRaw && eanRaw.toUpperCase() !== 'SEM GTIN' && eanRaw !== '0') ? eanRaw : '';
+
     return {
       codigo: getText(prod, 'cProd'),
+      ean,
       descricao,
       embalagem,
       unidade: getText(prod, 'uCom') || getText(prod, 'uTrib'),
