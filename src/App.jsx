@@ -11,6 +11,7 @@ import AppLayout from '@/components/layout/AppLayout';
 import ImportarXML from '@/pages/ImportarXML';
 import NotasFiscais from '@/pages/NotasFiscais';
 import RelatorioXML from '@/pages/RelatorioXML';
+import Bonus from '@/pages/Bonus';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -34,6 +35,7 @@ const AuthenticatedApp = () => {
         <Route path="/" element={<ImportarXML />} />
         <Route path="/notas" element={<NotasFiscais />} />
         <Route path="/relatorio" element={<RelatorioXML />} />
+        <Route path="/bonus" element={<Bonus />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>

@@ -1,0 +1,35 @@
+{
+  "name": "ProdutoLogistica",
+  "type": "object",
+  "properties": {
+    "ean": {
+      "type": "string",
+      "description": "C\u00f3digo EAN/Barras do produto"
+    },
+    "descricao": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do produto"
+    },
+    "lastro": {
+      "type": "number",
+      "description": "Quantidade de caixas por camada (lastro do palete)"
+    },
+    "camada": {
+      "type": "number",
+      "description": "N\u00famero de camadas por palete"
+    },
+    "unidade": {
+      "type": "string",
+      "description": "Unidade de medida (CX, UN, FD, etc.)"
+    },
+    "ativo": {
+      "type": "boolean",
+      "default": true,
+      "description": "Produto ativo"
+    }
+  },
+  "required": [
+    "ean",
+    "descricao"
+  ]
+}

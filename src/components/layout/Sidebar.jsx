@@ -1,12 +1,13 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FileCode2, FileText, BarChart2, X, Beaker } from 'lucide-react';
+import { FileCode2, FileText, BarChart2, X, Beaker, PackageCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { path: '/', label: 'Importar XML', icon: FileCode2 },
   { path: '/notas', label: 'Notas Fiscais', icon: FileText },
+  { path: '/bonus', label: 'Bônus de Recebimento', icon: PackageCheck },
   { path: '/relatorio', label: 'Relatório de Volumes', icon: BarChart2 },
 ];
 
