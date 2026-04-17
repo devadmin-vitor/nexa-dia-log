@@ -15,6 +15,7 @@ import Bonus from '@/pages/Bonus';
 import DadosLogisticos from '@/pages/DadosLogisticos';
 import DashboardExpedicao from '@/pages/DashboardExpedicao';
 import Expedicoes from '@/pages/Expedicoes';
+import Configuracoes from '@/pages/Configuracoes';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -42,6 +43,7 @@ const AuthenticatedApp = () => {
         <Route path="/logistica" element={<DadosLogisticos />} />
         <Route path="/dashboard" element={<DashboardExpedicao />} />
         <Route path="/expedicoes" element={<Expedicoes />} />
+        <Route path="/configuracoes" element={<Configuracoes />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>

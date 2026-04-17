@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FileCode2, FileText, BarChart2, X, Beaker, PackageCheck, Boxes, LayoutDashboard, Truck } from 'lucide-react';
+import { FileCode2, FileText, BarChart2, X, Beaker, PackageCheck, Boxes, LayoutDashboard, Truck, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -12,6 +12,7 @@ const navItems = [
   { path: '/relatorio', label: 'Relatório de Volumes', icon: BarChart2 },
   { path: '/dashboard', label: 'Dashboard Expedição', icon: LayoutDashboard },
   { path: '/expedicoes', label: 'Expedições', icon: Truck },
+  { path: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
 export default function Sidebar({ open, onClose }) {
