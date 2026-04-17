@@ -221,29 +221,45 @@ export default function DadosLogisticos() {
 
   const isLoading = loadingNotas || loadingLogisticas;
 
-  // Produtos únicos extraídos das NFs
-  const produtosNF = useMemo(() => extrairProdutosNFs(notas), [notas]);
-
-  // Mapa EAN → logística (para consulta rápida por EAN ou por descrição)
+  // Mapa descrição → logística cadastrada
   const logisticaByDescricao = useMemo(() => {
     const m = {};
     logisticas.forEach(l => { m[l.descricao] = l; });
     return m;
   }, [logisticas]);
 
+  // Merge: produtos das NFs + produtos já cadastrados que não estejam mais nas NFs
+  const produtosMerged = useMemo(() => {
+    const produtosNF = extrairProdutosNFs(notas);
+    const descricoesDasNFs = new Set(produtosNF.map(p => p.descricao));
+
+    // Produtos cadastrados que não aparecem mais em nenhuma NF ativa
+    const produtosOrfaos = logisticas
+      .filter(l => !descricoesDasNFs.has(l.descricao))
+      .map(l => ({
+        codigo: l.codigo || '',
+        ean: l.ean || '',
+        descricao: l.descricao,
+        unidade: l.unidade || '',
+        origem: 'logistica', // veio do cadastro, não de NF ativa
+      }));
+
+    return [...produtosNF, ...produtosOrfaos];
+  }, [notas, logisticas]);
+
   // Filtro
   const filtered = useMemo(() =>
-    produtosNF.filter(p =>
+    produtosMerged.filter(p =>
       !search ||
       p.descricao?.toLowerCase().includes(search.toLowerCase()) ||
       p.codigo?.toLowerCase().includes(search.toLowerCase()) ||
-      (logisticaByDescricao[p.descricao]?.ean || '').includes(search)
+      (logisticaByDescricao[p.descricao]?.ean || p.ean || '').includes(search)
     ),
-    [produtosNF, search, logisticaByDescricao]
+    [produtosMerged, search, logisticaByDescricao]
   );
 
-  const totalProdutos = produtosNF.length;
-  const cadastrados = produtosNF.filter(p => {
+  const totalProdutos = produtosMerged.length;
+  const cadastrados = produtosMerged.filter(p => {
     const log = logisticaByDescricao[p.descricao];
     return !!(log?.lastro && log?.camada);
   }).length;
@@ -268,7 +284,7 @@ export default function DadosLogisticos() {
         <div className="grid grid-cols-3 gap-3">
           <Card className="border-border">
             <CardContent className="py-3 px-4">
-              <p className="text-xs text-muted-foreground">Produtos nas NFs</p>
+              <p className="text-xs text-muted-foreground">Total de Produtos</p>
               <p className="text-2xl font-bold tabular-nums mt-0.5 text-foreground">{totalProdutos}</p>
             </CardContent>
           </Card>
@@ -336,8 +352,8 @@ export default function DadosLogisticos() {
               {filtered.map((produto, idx) => {
                 const log = logisticaByDescricao[produto.descricao];
                 const norma = log ? (log.lastro || 0) * (log.camada || 0) : 0;
-                const temEan = !!(log?.ean || produto.ean);
                 const cadastrado = !!(log?.lastro && log?.camada);
+                const semNFAtiva = produto.origem === 'logistica';
 
                 return (
                   <TableRow
@@ -352,9 +368,12 @@ export default function DadosLogisticos() {
                     {/* Descrição */}
                     <TableCell>
                       <p className="text-sm font-medium leading-tight">{produto.descricao}</p>
-                      {produto.unidade && (
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{produto.unidade}</p>
-                      )}
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {produto.unidade || ''}
+                        {semNFAtiva && (
+                          <span className="ml-1 text-blue-500 font-medium">· Cadastrado (sem NF ativa)</span>
+                        )}
+                      </p>
                     </TableCell>
 
                     {/* EAN */}
