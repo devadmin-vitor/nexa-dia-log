@@ -239,18 +239,39 @@ function gerarPDF(bonus) {
   const margin = 14;
   let y = 14;
 
-  const addLine = (text, x, yy, opts = {}) => {
-    if (opts.bold) doc.setFont('helvetica', 'bold');
-    else doc.setFont('helvetica', 'normal');
-    doc.setFontSize(opts.size || 9);
-    doc.text(text, x, yy);
+  // Larguras das colunas (ajustadas para não sobrepor)
+  // EAN: 14→13mm | Desc: 27→70mm | Validade: 97→22mm | Qtd: 119→14mm | Paletes: 133→22mm | Tipo: 155→13mm
+  const COL = {
+    ean:      { x: margin + 1,   w: 26 },
+    desc:     { x: margin + 27,  w: 68 },
+    validade: { x: margin + 95,  w: 24 },
+    qtd:      { x: margin + 119, w: 14 },
+    paletes:  { x: margin + 133, w: 22 },
+    tipo:     { x: margin + 155, w: 13 },
   };
 
-  const hLine = (yy) => { doc.setDrawColor(200, 200, 200); doc.line(margin, yy, W - margin, yy); };
+  const addText = (text, x, yy, opts = {}) => {
+    doc.setFont('helvetica', opts.bold ? 'bold' : 'normal');
+    doc.setFontSize(opts.size || 8);
+    const maxW = opts.maxW || undefined;
+    if (maxW) {
+      // Trunca o texto para caber na largura
+      const lines = doc.splitTextToSize(String(text), maxW);
+      doc.text(lines[0], x, yy);
+    } else {
+      doc.text(String(text), x, yy);
+    }
+  };
 
-  // Cabeçalho
+  const hLine = (yy, color = [200, 200, 200]) => {
+    doc.setDrawColor(...color);
+    doc.line(margin, yy, W - margin, yy);
+  };
+
+  // ── Cabeçalho verde ────────────────────────────────────────────────
+  const headerH = bonus.notas_fiscais_ids?.length ? 26 : 22;
   doc.setFillColor(22, 163, 74);
-  doc.rect(0, 0, W, 22, 'F');
+  doc.rect(0, 0, W, headerH, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
@@ -258,75 +279,142 @@ function gerarPDF(bonus) {
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
   doc.text(`Emitido em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, margin, 17);
-  doc.setTextColor(0, 0, 0);
-  y = 30;
 
-  // Informações do bônus
+  // NFs no cabeçalho
+  if (bonus.notas_fiscais_ids?.length) {
+    const nfTxt = `NFs: ${bonus.notas_fiscais_ids.length} vinculada(s)`;
+    doc.text(nfTxt, margin, 23);
+  }
+
+  doc.setTextColor(0, 0, 0);
+  y = headerH + 6;
+
+  // ── Resumo rápido (Qtd Conferida vs Pedida) ────────────────────────
+  const totalConferido1 = (bonus.itens_conferidos || []).reduce((a, i) => a + (i.qtd_caixas || 0), 0);
+  const totalConferido2 = (bonus.itens_conferidos_2 || []).reduce((a, i) => a + (i.qtd_caixas || 0), 0);
+  const totalPedido = (bonus.itens_esperados || []).reduce((a, i) => a + (i.qtd_esperada || 0), 0);
   const statusLabel = { conferido: 'Conferido', divergente: 'Divergente', em_conferencia: '1ª Conferência', aguardando_2a_conferencia: 'Ag. 2ª Conferência' };
-  addLine('Emitente:', margin, y, { bold: true, size: 9 });
-  addLine(bonus.emitente_nome || '—', margin + 22, y, { size: 9 });
-  addLine('Status:', 120, y, { bold: true, size: 9 });
-  addLine(statusLabel[bonus.status] || bonus.status, 133, y, { size: 9 });
+
+  // Box de resumo
+  doc.setFillColor(247, 250, 247);
+  doc.setDrawColor(200, 220, 200);
+  doc.roundedRect(margin, y, W - margin * 2, 20, 2, 2, 'FD');
+  y += 5;
+
+  addText('Emitente:', margin + 3, y, { bold: true, size: 8 });
+  addText(bonus.emitente_nome || '—', margin + 22, y, { size: 8, maxW: 70 });
+
+  addText('Status:', 130, y, { bold: true, size: 8 });
+  addText(statusLabel[bonus.status] || bonus.status, 143, y, { size: 8 });
   y += 6;
-  if (bonus.data_conferencia) {
-    addLine('1ª Conf.:', margin, y, { bold: true, size: 9 });
-    addLine(format(new Date(bonus.data_conferencia), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }), margin + 18, y, { size: 9 });
+
+  // Linha de quantidades
+  addText('Qtd Pedida (NF):', margin + 3, y, { bold: true, size: 8 });
+  addText(`${totalPedido.toLocaleString('pt-BR')} cx`, margin + 38, y, { size: 8 });
+
+  addText('1ª Conf.:', margin + 70, y, { bold: true, size: 8 });
+  addText(`${totalConferido1.toLocaleString('pt-BR')} cx`, margin + 84, y, { size: 8 });
+
+  if (totalConferido2 > 0) {
+    addText('2ª Conf.:', 130, y, { bold: true, size: 8 });
+    addText(`${totalConferido2.toLocaleString('pt-BR')} cx`, 143, y, { size: 8 });
   }
-  if (bonus.data_conferencia_2) {
-    addLine('2ª Conf.:', 120, y, { bold: true, size: 9 });
-    addLine(format(new Date(bonus.data_conferencia_2), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }), 133, y, { size: 9 });
+
+  y += 6;
+
+  // Datas
+  if (bonus.data_conferencia || bonus.data_conferencia_2) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    let dateStr = '';
+    if (bonus.data_conferencia) dateStr += `1ª Conf.: ${format(new Date(bonus.data_conferencia), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`;
+    if (bonus.data_conferencia_2) dateStr += `   2ª Conf.: ${format(new Date(bonus.data_conferencia_2), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`;
+    doc.text(dateStr, margin + 3, y);
+    doc.setTextColor(0, 0, 0);
+    y += 5;
   }
-  y += 8;
+
+  y += 4;
   hLine(y); y += 6;
 
+  // ── Tabela de itens ────────────────────────────────────────────────
   const drawItensTable = (itens, titulo) => {
     if (!itens || itens.length === 0) return;
-    addLine(titulo, margin, y, { bold: true, size: 10 });
-    y += 6;
+    if (y > 255) { doc.addPage(); y = 20; }
 
-    // Header da tabela
-    doc.setFillColor(240, 240, 240);
-    doc.rect(margin, y - 4, W - margin * 2, 6, 'F');
-    addLine('EAN', margin + 1, y, { bold: true, size: 7 });
-    addLine('Descrição', margin + 35, y, { bold: true, size: 7 });
-    addLine('Validade', margin + 105, y, { bold: true, size: 7 });
-    addLine('Qtd Cx', margin + 127, y, { bold: true, size: 7 });
-    addLine('Paletes', margin + 145, y, { bold: true, size: 7 });
-    addLine('Tipo', margin + 163, y, { bold: true, size: 7 });
+    addText(titulo, margin, y, { bold: true, size: 10 });
+    y += 7;
+
+    // Header
+    doc.setFillColor(230, 245, 235);
+    doc.rect(margin, y - 4.5, W - margin * 2, 6.5, 'F');
+    hLine(y - 4.5, [180, 210, 180]);
+    doc.setTextColor(40, 100, 60);
+    addText('EAN',      COL.ean.x,      y, { bold: true, size: 7 });
+    addText('Descrição',COL.desc.x,     y, { bold: true, size: 7 });
+    addText('Validade', COL.validade.x, y, { bold: true, size: 7 });
+    addText('Qtd Cx',   COL.qtd.x,      y, { bold: true, size: 7 });
+    addText('Paletes',  COL.paletes.x,  y, { bold: true, size: 7 });
+    addText('Tipo',     COL.tipo.x,     y, { bold: true, size: 7 });
+    doc.setTextColor(0, 0, 0);
     y += 5;
-    hLine(y); y += 3;
+    hLine(y, [180, 210, 180]); y += 3;
 
     let totalBoas = 0, totalAvarias = 0;
-    itens.forEach(item => {
-      if (y > 270) { doc.addPage(); y = 20; }
+    itens.forEach((item, idx) => {
+      if (y > 272) { doc.addPage(); y = 20; }
       const isAvaria = item.tipo_estoque === 'AVARIA';
-      if (isAvaria) { doc.setTextColor(180, 30, 30); totalAvarias += (item.qtd_caixas || 0); }
-      else { doc.setTextColor(0, 0, 0); totalBoas += (item.qtd_caixas || 0); }
+      if (isAvaria) {
+        doc.setFillColor(255, 245, 245);
+        doc.rect(margin, y - 3.5, W - margin * 2, 5.5, 'F');
+        doc.setTextColor(180, 30, 30);
+        totalAvarias += (item.qtd_caixas || 0);
+      } else {
+        if (idx % 2 === 0) {
+          doc.setFillColor(252, 252, 252);
+          doc.rect(margin, y - 3.5, W - margin * 2, 5.5, 'F');
+        }
+        doc.setTextColor(30, 30, 30);
+        totalBoas += (item.qtd_caixas || 0);
+      }
 
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7.5);
-      const eanTxt = (item.ean || '—').toString().slice(0, 18);
-      const descTxt = (item.descricao || '—').toString().slice(0, 40);
-      const valTxt = item.validade ? format(new Date(item.validade), 'dd/MM/yyyy') : '—';
-      doc.text(eanTxt, margin + 1, y);
-      doc.text(descTxt, margin + 35, y);
-      doc.text(valTxt, margin + 105, y);
-      doc.text((item.qtd_caixas || 0).toString(), margin + 127, y);
-      doc.text(item.qtd_paletes || '—', margin + 145, y);
-      doc.text(isAvaria ? 'AVARIA' : 'BOM', margin + 163, y);
-      y += 5;
+      doc.setFontSize(7);
+
+      // Trunca descrição para caber na coluna
+      const eanTxt  = doc.splitTextToSize((item.ean || '—').toString(), COL.ean.w)[0];
+      const descTxt = doc.splitTextToSize((item.descricao || '—').toString(), COL.desc.w)[0];
+      const valTxt  = item.validade ? format(new Date(item.validade), 'dd/MM/yyyy') : '—';
+      const qtdTxt  = (item.qtd_caixas || 0).toString();
+      const palTxt  = doc.splitTextToSize((item.qtd_paletes || '—').toString(), COL.paletes.w)[0];
+      const tipoTxt = isAvaria ? 'AVARIA' : 'BOM';
+
+      doc.text(eanTxt,  COL.ean.x,      y);
+      doc.text(descTxt, COL.desc.x,     y);
+      doc.text(valTxt,  COL.validade.x, y);
+      doc.text(qtdTxt,  COL.qtd.x,      y);
+      doc.text(palTxt,  COL.paletes.x,  y);
+      doc.text(tipoTxt, COL.tipo.x,     y);
+      y += 5.5;
     });
 
     doc.setTextColor(0, 0, 0);
     hLine(y); y += 4;
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
-    doc.text(`Total Boas: ${totalBoas.toLocaleString('pt-BR')} cx`, margin + 105, y);
+
+    // Totais
+    doc.setFillColor(240, 248, 240);
+    doc.rect(margin, y - 3.5, W - margin * 2, 7, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text(`Boas: ${totalBoas.toLocaleString('pt-BR')} cx`, COL.validade.x, y + 1);
     if (totalAvarias > 0) {
       doc.setTextColor(180, 30, 30);
-      doc.text(`  Avarias: ${totalAvarias.toLocaleString('pt-BR')} cx`, margin + 130, y);
+      doc.text(`Avarias: ${totalAvarias.toLocaleString('pt-BR')} cx`, COL.qtd.x + 2, y + 1);
       doc.setTextColor(0, 0, 0);
     }
-    y += 8;
+    doc.text(`Total: ${(totalBoas + totalAvarias).toLocaleString('pt-BR')} cx`, COL.paletes.x + 2, y + 1);
+    y += 12;
   };
 
   drawItensTable(bonus.itens_conferidos, '1ª Conferência — Itens Conferidos');
@@ -334,23 +422,35 @@ function gerarPDF(bonus) {
     drawItensTable(bonus.itens_conferidos_2, '2ª Conferência — Itens Verificados');
   }
 
-  // Itens esperados
+  // ── Itens esperados (NFs) ──────────────────────────────────────────
   if (bonus.itens_esperados?.length) {
-    if (y > 240) { doc.addPage(); y = 20; }
-    addLine('Itens Esperados (NFs)', margin, y, { bold: true, size: 10 }); y += 6;
-    doc.setFillColor(240, 240, 240);
-    doc.rect(margin, y - 4, W - margin * 2, 6, 'F');
-    addLine('EAN', margin + 1, y, { bold: true, size: 7 });
-    addLine('Descrição', margin + 40, y, { bold: true, size: 7 });
-    addLine('Qtd Esperada', margin + 150, y, { bold: true, size: 7 });
-    y += 5; hLine(y); y += 3;
-    bonus.itens_esperados.forEach(item => {
-      if (y > 270) { doc.addPage(); y = 20; }
-      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
-      doc.text((item.ean || '—').toString().slice(0, 20), margin + 1, y);
-      doc.text((item.descricao || '—').toString().slice(0, 60), margin + 40, y);
-      doc.text((item.qtd_esperada || 0).toLocaleString('pt-BR'), margin + 150, y);
-      y += 5;
+    if (y > 245) { doc.addPage(); y = 20; }
+    addText('Itens Esperados — NFs', margin, y, { bold: true, size: 10 }); y += 7;
+
+    doc.setFillColor(235, 240, 250);
+    doc.rect(margin, y - 4.5, W - margin * 2, 6.5, 'F');
+    hLine(y - 4.5, [180, 190, 220]);
+    doc.setTextColor(40, 60, 120);
+    addText('EAN',          margin + 1,  y, { bold: true, size: 7 });
+    addText('Descrição',    margin + 30, y, { bold: true, size: 7 });
+    addText('Qtd Esperada', margin + 155, y, { bold: true, size: 7 });
+    doc.setTextColor(0, 0, 0);
+    y += 5; hLine(y, [180, 190, 220]); y += 3;
+
+    bonus.itens_esperados.forEach((item, idx) => {
+      if (y > 272) { doc.addPage(); y = 20; }
+      if (idx % 2 === 0) {
+        doc.setFillColor(248, 250, 255);
+        doc.rect(margin, y - 3.5, W - margin * 2, 5.5, 'F');
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      const eanT  = doc.splitTextToSize((item.ean || '—').toString(), 28)[0];
+      const descT = doc.splitTextToSize((item.descricao || '—').toString(), 124)[0];
+      doc.text(eanT, margin + 1, y);
+      doc.text(descT, margin + 30, y);
+      doc.text((item.qtd_esperada || 0).toLocaleString('pt-BR'), margin + 155, y);
+      y += 5.5;
     });
     hLine(y); y += 8;
   }
