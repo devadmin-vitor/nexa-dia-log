@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FileCode2, FileText, BarChart2, X, Beaker, PackageCheck, Boxes, LayoutDashboard, Truck, Settings } from 'lucide-react';
+import { FileCode2, FileText, BarChart2, X, Beaker, PackageCheck, Boxes, LayoutDashboard, Truck, Settings, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -10,6 +10,7 @@ const navItems = [
   { path: '/bonus', label: 'Bônus de Recebimento', icon: PackageCheck },
   { path: '/logistica', label: 'Dados Logísticos', icon: Boxes },
   { path: '/relatorio', label: 'Relatório de Volumes', icon: BarChart2 },
+  { path: '/checagem', label: 'Checagem de Recebimento', icon: ClipboardList },
   { path: '/dashboard', label: 'Dashboard Expedição', icon: LayoutDashboard },
   { path: '/expedicoes', label: 'Expedições', icon: Truck },
   { path: '/configuracoes', label: 'Configurações', icon: Settings },
