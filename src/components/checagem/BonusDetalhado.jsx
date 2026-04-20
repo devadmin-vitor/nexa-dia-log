@@ -109,33 +109,45 @@ function DivergenciasSection({ bonus }) {
 
   if (conf1.length === 0 && conf2.length === 0) return null;
 
-  // Mapa de totais por EAN
+  // Divergências NF x 1ª conf — comparar por DESCRIÇÃO para evitar falsos positivos
+  // quando itens_esperados foi salvo com código interno no lugar do EAN
+  const espPorDesc = {};
+  const eanEspPorDesc = {};
+  esperados.forEach(i => {
+    espPorDesc[i.descricao] = (espPorDesc[i.descricao] || 0) + (i.qtd_esperada || 0);
+    const eanValido = /^\d{8,14}$/.test(i.ean || '');
+    if (eanValido) eanEspPorDesc[i.descricao] = i.ean;
+  });
+
+  const conf1PorDesc = {};
+  const eanConf1PorDesc = {};
+  conf1.forEach(i => {
+    conf1PorDesc[i.descricao] = (conf1PorDesc[i.descricao] || 0) + (i.qtd_caixas || 0);
+    eanConf1PorDesc[i.descricao] = i.ean;
+  });
+
+  const allDescsVsNF = new Set([...Object.keys(espPorDesc), ...Object.keys(conf1PorDesc)]);
+  const divNF = [...allDescsVsNF]
+    .map(desc => ({
+      ean: eanConf1PorDesc[desc] || eanEspPorDesc[desc] || desc,
+      descricao: desc,
+      esperado: espPorDesc[desc] || 0,
+      conferido1: conf1PorDesc[desc] || 0,
+    }))
+    .filter(d => d.esperado !== d.conferido1);
+
+  // Divergências 1ª x 2ª conf — comparar por EAN (ambas gravadas com EAN real)
   const totais1 = {};
-  conf1.forEach(i => { totais1[i.ean] = (totais1[i.ean] || 0) + (i.qtd_caixas || 0); });
+  const descMap1 = {};
+  conf1.forEach(i => { totais1[i.ean] = (totais1[i.ean] || 0) + (i.qtd_caixas || 0); descMap1[i.ean] = i.descricao; });
 
   const totais2 = {};
   conf2.forEach(i => { totais2[i.ean] = (totais2[i.ean] || 0) + (i.qtd_caixas || 0); });
 
-  const totaisEsp = {};
-  const descMap = {};
-  esperados.forEach(i => {
-    totaisEsp[i.ean] = (totaisEsp[i.ean] || 0) + (i.qtd_esperada || 0);
-    descMap[i.ean] = i.descricao;
-  });
-  conf1.forEach(i => { descMap[i.ean] = descMap[i.ean] || i.descricao; });
-  conf2.forEach(i => { descMap[i.ean] = descMap[i.ean] || i.descricao; });
-
-  // Divergências NF x 1ª conf
-  const allEansVsNF = new Set([...Object.keys(totaisEsp), ...Object.keys(totais1)]);
-  const divNF = [...allEansVsNF]
-    .map(ean => ({ ean, descricao: descMap[ean] || ean, esperado: totaisEsp[ean] || 0, conferido1: totais1[ean] || 0 }))
-    .filter(d => d.esperado !== d.conferido1);
-
-  // Divergências 1ª x 2ª conf
   const allEansConf = new Set([...Object.keys(totais1), ...Object.keys(totais2)]);
   const div12 = conf2.length > 0
     ? [...allEansConf]
-        .map(ean => ({ ean, descricao: descMap[ean] || ean, conf1: totais1[ean] || 0, conf2: totais2[ean] || 0 }))
+        .map(ean => ({ ean, descricao: descMap1[ean] || ean, conf1: totais1[ean] || 0, conf2: totais2[ean] || 0 }))
         .filter(d => d.conf1 !== d.conf2)
     : [];
 

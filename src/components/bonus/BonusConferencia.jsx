@@ -189,7 +189,7 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
     const divs = [];
 
     if (is2aConferencia) {
-      // 2ª conferência: compara com a 1ª conferência
+      // 2ª conferência: compara com a 1ª conferência (ambas usam EAN real)
       const totalConferido1 = {};
       const descricaoMap = {};
       (bonus?.itens_conferidos || []).forEach(item => {
@@ -211,22 +211,39 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
         }
       });
     } else {
-      // 1ª conferência: compara com o esperado das NFs
-      const totalEsperado = {};
-      const descricaoMap = {};
+      // 1ª conferência: compara com o esperado das NFs agrupado por DESCRIÇÃO
+      // (evita divergências falsas quando itens_esperados foi salvo com código interno no lugar do EAN)
+      const totalEsperadoPorDesc = {};
+      const eanPorDesc = {};
       (bonus?.itens_esperados || []).forEach(item => {
-        totalEsperado[item.ean] = (totalEsperado[item.ean] || 0) + item.qtd_esperada;
-        descricaoMap[item.ean] = item.descricao;
+        const desc = item.descricao;
+        totalEsperadoPorDesc[desc] = (totalEsperadoPorDesc[desc] || 0) + item.qtd_esperada;
+        // Só usa o EAN do item esperado se parecer um EAN real (≥8 dígitos numéricos)
+        const eanValido = /^\d{8,14}$/.test(item.ean || '');
+        if (eanValido) eanPorDesc[desc] = item.ean;
       });
 
-      const allEans = new Set([...Object.keys(totalConferido), ...Object.keys(totalEsperado)]);
-      allEans.forEach(ean => {
-        const conf = totalConferido[ean] || 0;
-        const esp = totalEsperado[ean] || 0;
+      // Totais conferidos agrupados por descrição
+      const totalConferidoPorDesc = {};
+      const eanConferidoPorDesc = {};
+      itensConferidos.forEach(item => {
+        const desc = item.descricao;
+        totalConferidoPorDesc[desc] = (totalConferidoPorDesc[desc] || 0) + item.qtd_caixas;
+        eanConferidoPorDesc[desc] = item.ean;
+      });
+
+      const allDescs = new Set([
+        ...Object.keys(totalEsperadoPorDesc),
+        ...Object.keys(totalConferidoPorDesc),
+      ]);
+
+      allDescs.forEach(desc => {
+        const conf = totalConferidoPorDesc[desc] || 0;
+        const esp = totalEsperadoPorDesc[desc] || 0;
         if (conf !== esp) {
           divs.push({
-            ean,
-            descricao: descricaoMap[ean] || itensConferidos.find(i => i.ean === ean)?.descricao || ean,
+            ean: eanConferidoPorDesc[desc] || eanPorDesc[desc] || desc,
+            descricao: desc,
             esperado: esp,
             conferido: conf,
           });
