@@ -70,13 +70,15 @@ export default function NovoBonusDialog({ open, onOpenChange, onCriado }) {
         return;
       }
 
-      // Montar itens esperados unificando itens de todas as NFs
+      // Montar itens esperados unificando itens de todas as NFs — chave sempre pelo EAN
       const itensMap = {};
       nfsSelecionadas.forEach(nf => {
         (nf.itens || []).forEach(item => {
-          const key = item.codigo || item.descricao;
+          // Usa EAN real do produto; se não houver, cai na descrição como fallback
+          const ean = item.ean || '';
+          const key = ean || item.descricao;
           if (!itensMap[key]) {
-            itensMap[key] = { ean: item.codigo || '', descricao: item.descricao, qtd_esperada: 0 };
+            itensMap[key] = { ean, descricao: item.descricao, qtd_esperada: 0 };
           }
           itensMap[key].qtd_esperada += item.quantidade || 0;
         });

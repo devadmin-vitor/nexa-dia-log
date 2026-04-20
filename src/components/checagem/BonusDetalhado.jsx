@@ -4,10 +4,11 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import {
   ArrowLeft, AlertTriangle, CheckCircle2, Clock,
-  FileText, Calendar, Package, ShieldCheck, List,
+  FileText, Calendar, Package, ShieldCheck, List, FileDown,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { jsPDF } from 'jspdf';
 
 const STATUS_CONFIG = {
   em_conferencia: { label: '1ª Conferência', className: 'bg-blue-100 text-blue-700 border-blue-200' },
@@ -218,6 +219,131 @@ function DivergenciasSection({ bonus }) {
   );
 }
 
+function gerarPDF(bonus) {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210;
+  const margin = 14;
+  let y = 14;
+
+  const addLine = (text, x, yy, opts = {}) => {
+    if (opts.bold) doc.setFont('helvetica', 'bold');
+    else doc.setFont('helvetica', 'normal');
+    doc.setFontSize(opts.size || 9);
+    doc.text(text, x, yy);
+  };
+
+  const hLine = (yy) => { doc.setDrawColor(200, 200, 200); doc.line(margin, yy, W - margin, yy); };
+
+  // Cabeçalho
+  doc.setFillColor(22, 163, 74);
+  doc.rect(0, 0, W, 22, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text(`Relatório de Bônus #${bonus.numero_bonus}`, margin, 10);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Emitido em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, margin, 17);
+  doc.setTextColor(0, 0, 0);
+  y = 30;
+
+  // Informações do bônus
+  const statusLabel = { conferido: 'Conferido', divergente: 'Divergente', em_conferencia: '1ª Conferência', aguardando_2a_conferencia: 'Ag. 2ª Conferência' };
+  addLine('Emitente:', margin, y, { bold: true, size: 9 });
+  addLine(bonus.emitente_nome || '—', margin + 22, y, { size: 9 });
+  addLine('Status:', 120, y, { bold: true, size: 9 });
+  addLine(statusLabel[bonus.status] || bonus.status, 133, y, { size: 9 });
+  y += 6;
+  if (bonus.data_conferencia) {
+    addLine('1ª Conf.:', margin, y, { bold: true, size: 9 });
+    addLine(format(new Date(bonus.data_conferencia), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }), margin + 18, y, { size: 9 });
+  }
+  if (bonus.data_conferencia_2) {
+    addLine('2ª Conf.:', 120, y, { bold: true, size: 9 });
+    addLine(format(new Date(bonus.data_conferencia_2), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR }), 133, y, { size: 9 });
+  }
+  y += 8;
+  hLine(y); y += 6;
+
+  const drawItensTable = (itens, titulo) => {
+    if (!itens || itens.length === 0) return;
+    addLine(titulo, margin, y, { bold: true, size: 10 });
+    y += 6;
+
+    // Header da tabela
+    doc.setFillColor(240, 240, 240);
+    doc.rect(margin, y - 4, W - margin * 2, 6, 'F');
+    addLine('EAN', margin + 1, y, { bold: true, size: 7 });
+    addLine('Descrição', margin + 35, y, { bold: true, size: 7 });
+    addLine('Validade', margin + 105, y, { bold: true, size: 7 });
+    addLine('Qtd Cx', margin + 127, y, { bold: true, size: 7 });
+    addLine('Paletes', margin + 145, y, { bold: true, size: 7 });
+    addLine('Tipo', margin + 163, y, { bold: true, size: 7 });
+    y += 5;
+    hLine(y); y += 3;
+
+    let totalBoas = 0, totalAvarias = 0;
+    itens.forEach(item => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      const isAvaria = item.tipo_estoque === 'AVARIA';
+      if (isAvaria) { doc.setTextColor(180, 30, 30); totalAvarias += (item.qtd_caixas || 0); }
+      else { doc.setTextColor(0, 0, 0); totalBoas += (item.qtd_caixas || 0); }
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7.5);
+      const eanTxt = (item.ean || '—').toString().slice(0, 18);
+      const descTxt = (item.descricao || '—').toString().slice(0, 40);
+      const valTxt = item.validade ? format(new Date(item.validade), 'dd/MM/yyyy') : '—';
+      doc.text(eanTxt, margin + 1, y);
+      doc.text(descTxt, margin + 35, y);
+      doc.text(valTxt, margin + 105, y);
+      doc.text((item.qtd_caixas || 0).toString(), margin + 127, y);
+      doc.text(item.qtd_paletes || '—', margin + 145, y);
+      doc.text(isAvaria ? 'AVARIA' : 'BOM', margin + 163, y);
+      y += 5;
+    });
+
+    doc.setTextColor(0, 0, 0);
+    hLine(y); y += 4;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+    doc.text(`Total Boas: ${totalBoas.toLocaleString('pt-BR')} cx`, margin + 105, y);
+    if (totalAvarias > 0) {
+      doc.setTextColor(180, 30, 30);
+      doc.text(`  Avarias: ${totalAvarias.toLocaleString('pt-BR')} cx`, margin + 130, y);
+      doc.setTextColor(0, 0, 0);
+    }
+    y += 8;
+  };
+
+  drawItensTable(bonus.itens_conferidos, '1ª Conferência — Itens Conferidos');
+  if (bonus.itens_conferidos_2?.length) {
+    drawItensTable(bonus.itens_conferidos_2, '2ª Conferência — Itens Verificados');
+  }
+
+  // Itens esperados
+  if (bonus.itens_esperados?.length) {
+    if (y > 240) { doc.addPage(); y = 20; }
+    addLine('Itens Esperados (NFs)', margin, y, { bold: true, size: 10 }); y += 6;
+    doc.setFillColor(240, 240, 240);
+    doc.rect(margin, y - 4, W - margin * 2, 6, 'F');
+    addLine('EAN', margin + 1, y, { bold: true, size: 7 });
+    addLine('Descrição', margin + 40, y, { bold: true, size: 7 });
+    addLine('Qtd Esperada', margin + 150, y, { bold: true, size: 7 });
+    y += 5; hLine(y); y += 3;
+    bonus.itens_esperados.forEach(item => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+      doc.text((item.ean || '—').toString().slice(0, 20), margin + 1, y);
+      doc.text((item.descricao || '—').toString().slice(0, 60), margin + 40, y);
+      doc.text((item.qtd_esperada || 0).toLocaleString('pt-BR'), margin + 150, y);
+      y += 5;
+    });
+    hLine(y); y += 8;
+  }
+
+  doc.save(`Bonus_${bonus.numero_bonus}_Relatorio.pdf`);
+}
+
 export default function BonusDetalhado({ bonus, onVoltar }) {
   const cfg = STATUS_CONFIG[bonus.status] || STATUS_CONFIG.em_conferencia;
 
@@ -249,6 +375,15 @@ export default function BonusDetalhado({ bonus, onVoltar }) {
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">{bonus.emitente_nome || '—'}</p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => gerarPDF(bonus)}
+          className="gap-2 shrink-0"
+        >
+          <FileDown className="w-4 h-4" />
+          Exportar PDF
+        </Button>
       </div>
 
       {/* Metadados */}
