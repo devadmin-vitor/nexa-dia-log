@@ -239,15 +239,17 @@ function gerarPDF(bonus) {
   const margin = 14;
   let y = 14;
 
-  // Larguras das colunas (ajustadas para não sobrepor)
-  // EAN: 14→13mm | Desc: 27→70mm | Validade: 97→22mm | Qtd: 119→14mm | Paletes: 133→22mm | Tipo: 155→13mm
+  // Larguras das colunas
+  // EAN | Descrição | Validade | Qtd Pedida | Qtd Cx | +/- | Paletes | Tipo
   const COL = {
-    ean:      { x: margin + 1,   w: 26 },
-    desc:     { x: margin + 27,  w: 68 },
-    validade: { x: margin + 95,  w: 24 },
-    qtd:      { x: margin + 119, w: 14 },
-    paletes:  { x: margin + 133, w: 22 },
-    tipo:     { x: margin + 155, w: 13 },
+    ean:      { x: margin + 1,   w: 24 },
+    desc:     { x: margin + 25,  w: 58 },
+    validade: { x: margin + 83,  w: 22 },
+    pedida:   { x: margin + 105, w: 13 },
+    qtd:      { x: margin + 118, w: 13 },
+    diff:     { x: margin + 131, w: 13 },
+    paletes:  { x: margin + 144, w: 22 },
+    tipo:     { x: margin + 166, w: 13 },
   };
 
   const addText = (text, x, yy, opts = {}) => {
@@ -338,6 +340,12 @@ function gerarPDF(bonus) {
   y += 4;
   hLine(y); y += 6;
 
+  // ── Mapa qtd esperada por descrição (para lookup por item) ───────────
+  const espPorDesc = {};
+  (bonus.itens_esperados || []).forEach(i => {
+    espPorDesc[i.descricao] = (espPorDesc[i.descricao] || 0) + (i.qtd_esperada || 0);
+  });
+
   // ── Tabela de itens ────────────────────────────────────────────────
   const drawItensTable = (itens, titulo) => {
     if (!itens || itens.length === 0) return;
@@ -351,12 +359,14 @@ function gerarPDF(bonus) {
     doc.rect(margin, y - 4.5, W - margin * 2, 6.5, 'F');
     hLine(y - 4.5, [180, 210, 180]);
     doc.setTextColor(40, 100, 60);
-    addText('EAN',      COL.ean.x,      y, { bold: true, size: 7 });
-    addText('Descrição',COL.desc.x,     y, { bold: true, size: 7 });
-    addText('Validade', COL.validade.x, y, { bold: true, size: 7 });
-    addText('Qtd Cx',   COL.qtd.x,      y, { bold: true, size: 7 });
-    addText('Paletes',  COL.paletes.x,  y, { bold: true, size: 7 });
-    addText('Tipo',     COL.tipo.x,     y, { bold: true, size: 7 });
+    addText('EAN',       COL.ean.x,      y, { bold: true, size: 6.5 });
+    addText('Descrição', COL.desc.x,     y, { bold: true, size: 6.5 });
+    addText('Validade',  COL.validade.x, y, { bold: true, size: 6.5 });
+    addText('Pedido',    COL.pedida.x,   y, { bold: true, size: 6.5 });
+    addText('Conf.',     COL.qtd.x,      y, { bold: true, size: 6.5 });
+    addText('+/-',       COL.diff.x,     y, { bold: true, size: 6.5 });
+    addText('Paletes',   COL.paletes.x,  y, { bold: true, size: 6.5 });
+    addText('Tipo',      COL.tipo.x,     y, { bold: true, size: 6.5 });
     doc.setTextColor(0, 0, 0);
     y += 5;
     hLine(y, [180, 210, 180]); y += 3;
@@ -365,37 +375,70 @@ function gerarPDF(bonus) {
     itens.forEach((item, idx) => {
       if (y > 272) { doc.addPage(); y = 20; }
       const isAvaria = item.tipo_estoque === 'AVARIA';
+      const qtdConf = item.qtd_caixas || 0;
+      const qtdPed  = espPorDesc[item.descricao] || 0;
+      const diff    = qtdConf - qtdPed;
+
       if (isAvaria) {
         doc.setFillColor(255, 245, 245);
         doc.rect(margin, y - 3.5, W - margin * 2, 5.5, 'F');
         doc.setTextColor(180, 30, 30);
-        totalAvarias += (item.qtd_caixas || 0);
+        totalAvarias += qtdConf;
       } else {
         if (idx % 2 === 0) {
           doc.setFillColor(252, 252, 252);
           doc.rect(margin, y - 3.5, W - margin * 2, 5.5, 'F');
         }
         doc.setTextColor(30, 30, 30);
-        totalBoas += (item.qtd_caixas || 0);
+        totalBoas += qtdConf;
       }
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
 
-      // Trunca descrição para caber na coluna
       const eanTxt  = doc.splitTextToSize((item.ean || '—').toString(), COL.ean.w)[0];
       const descTxt = doc.splitTextToSize((item.descricao || '—').toString(), COL.desc.w)[0];
       const valTxt  = item.validade ? format(new Date(item.validade), 'dd/MM/yyyy') : '—';
-      const qtdTxt  = (item.qtd_caixas || 0).toString();
       const palTxt  = doc.splitTextToSize((item.qtd_paletes || '—').toString(), COL.paletes.w)[0];
       const tipoTxt = isAvaria ? 'AVARIA' : 'BOM';
 
       doc.text(eanTxt,  COL.ean.x,      y);
       doc.text(descTxt, COL.desc.x,     y);
       doc.text(valTxt,  COL.validade.x, y);
-      doc.text(qtdTxt,  COL.qtd.x,      y);
-      doc.text(palTxt,  COL.paletes.x,  y);
-      doc.text(tipoTxt, COL.tipo.x,     y);
+
+      // Qtd Pedida
+      if (!isAvaria) {
+        doc.setTextColor(80, 80, 80);
+        doc.text(qtdPed > 0 ? qtdPed.toString() : '—', COL.pedida.x, y);
+      } else {
+        doc.text('—', COL.pedida.x, y);
+      }
+
+      // Qtd Conferida
+      doc.setTextColor(isAvaria ? 180 : 30, 30, 30);
+      doc.text(qtdConf.toString(), COL.qtd.x, y);
+
+      // Divergência +/-
+      if (!isAvaria && qtdPed > 0) {
+        if (diff === 0) {
+          doc.setTextColor(22, 163, 74);
+          doc.text('=', COL.diff.x, y);
+        } else if (diff > 0) {
+          doc.setTextColor(200, 100, 0);
+          doc.text(`+${diff}`, COL.diff.x, y);
+        } else {
+          doc.setTextColor(180, 30, 30);
+          doc.text(`${diff}`, COL.diff.x, y);
+        }
+      } else {
+        doc.setTextColor(150, 150, 150);
+        doc.text('—', COL.diff.x, y);
+      }
+
+      doc.setTextColor(isAvaria ? 180 : 30, 30, 30);
+      doc.text(palTxt,  COL.paletes.x, y);
+      doc.text(tipoTxt, COL.tipo.x,    y);
+      doc.setTextColor(0, 0, 0);
       y += 5.5;
     });
 
@@ -410,10 +453,10 @@ function gerarPDF(bonus) {
     doc.text(`Boas: ${totalBoas.toLocaleString('pt-BR')} cx`, COL.validade.x, y + 1);
     if (totalAvarias > 0) {
       doc.setTextColor(180, 30, 30);
-      doc.text(`Avarias: ${totalAvarias.toLocaleString('pt-BR')} cx`, COL.qtd.x + 2, y + 1);
+      doc.text(`Avarias: ${totalAvarias.toLocaleString('pt-BR')} cx`, COL.qtd.x, y + 1);
       doc.setTextColor(0, 0, 0);
     }
-    doc.text(`Total: ${(totalBoas + totalAvarias).toLocaleString('pt-BR')} cx`, COL.paletes.x + 2, y + 1);
+    doc.text(`Total: ${(totalBoas + totalAvarias).toLocaleString('pt-BR')} cx`, COL.paletes.x, y + 1);
     y += 12;
   };
 
