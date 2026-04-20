@@ -6,8 +6,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   ArrowLeft, AlertTriangle, CheckCircle2, Clock,
   FileText, Calendar, ShieldCheck, List, FileDown, Trash2,
-  TrendingUp, TrendingDown, LayoutTemplate,
+  Copy,
 } from 'lucide-react';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { jsPDF } from 'jspdf';
@@ -490,6 +495,9 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
 // ─── Componente principal ────────────────────────────────────────────────────
 export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
   const [authDeleteOpen, setAuthDeleteOpen] = useState(false);
+  const [confirmReplicacaoOpen, setConfirmReplicacaoOpen] = useState(false);
+  const [authReplicacaoOpen, setAuthReplicacaoOpen] = useState(false);
+  const [replicando, setReplicando] = useState(false);
   const [notasVinculadas, setNotasVinculadas] = useState([]);
 
   // Filtros do PDF
@@ -514,6 +522,24 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
   const totalEsp = (bonus.itens_esperados || []).reduce((a, i) => a + (i.qtd_esperada || 0), 0);
   const temAvaria1 = itens1.some(i => i.tipo_estoque === 'AVARIA');
   const temAvaria2 = itens2.some(i => i.tipo_estoque === 'AVARIA');
+
+  const handleReplicar = async () => {
+    setReplicando(true);
+    try {
+      const itens1Copia = JSON.parse(JSON.stringify(bonus.itens_conferidos || []));
+      await base44.entities.BonusRecebimento.update(bonus.id, {
+        itens_conferidos_2: itens1Copia,
+        status: 'aguardando_2a_conferencia',
+        data_conferencia_2: new Date().toISOString(),
+      });
+      toast.success('1ª conferência replicada com sucesso para a 2ª conferência!');
+      onVoltar();
+    } catch (err) {
+      toast.error('Erro ao replicar: ' + err.message);
+    } finally {
+      setReplicando(false);
+    }
+  };
 
   const handleExportarPDF = () => {
     gerarPDF(
@@ -544,11 +570,56 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
           <p className="text-sm text-muted-foreground mt-0.5">{bonus.emitente_nome || '—'}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {itens1.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmReplicacaoOpen(true)}
+              className="gap-2 border-indigo-300 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800"
+            >
+              <Copy className="w-4 h-4" />
+              Replicação
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={() => setAuthDeleteOpen(true)} className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10">
             <Trash2 className="w-4 h-4" />Excluir
           </Button>
         </div>
       </div>
+
+      {/* Dialog de confirmação de risco */}
+      <AlertDialog open={confirmReplicacaoOpen} onOpenChange={setConfirmReplicacaoOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Atenção — Ação de Risco
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-sm">
+              <p>Esta ação irá <strong>duplicar todos os itens da 1ª conferência</strong> como dados da 2ª conferência, sobrescrevendo qualquer conferência dupla existente.</p>
+              <p className="text-amber-700 font-medium">Tem certeza que deseja prosseguir adiante?</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+              onClick={() => { setConfirmReplicacaoOpen(false); setAuthReplicacaoOpen(true); }}
+            >
+              Sim, prosseguir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog de credenciais admin para replicação */}
+      <AdminAuthDialog
+        open={authReplicacaoOpen}
+        onOpenChange={setAuthReplicacaoOpen}
+        title="Autenticação — Replicação"
+        description="Confirme suas credenciais de administrador para replicar a 1ª conferência."
+        onAuthorized={handleReplicar}
+      />
 
       <AdminAuthDialog
         open={authDeleteOpen}
