@@ -279,8 +279,7 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
   doc.setFont('helvetica', 'normal');
 
   // Linha de filtros ativos no cabeçalho
-  const filtrosAtivos = [filtros.sobras && 'Sobras', filtros.faltas && 'Faltas', filtros.avarias && 'Avarias'].filter(Boolean).join(', ');
-  doc.text(`Emitido em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}   |   Filtros: ${filtrosAtivos || 'Nenhum'}`, margin, 17);
+  doc.text(`Emitido em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, margin, 17);
 
   if (nfLines.length > 0) {
     nfLines.forEach((line, idx) => {
