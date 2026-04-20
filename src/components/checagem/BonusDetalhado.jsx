@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -233,7 +233,7 @@ function DivergenciasSection({ bonus }) {
   );
 }
 
-function gerarPDF(bonus) {
+function gerarPDF(bonus, notasVinculadas = []) {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const W = 210;
   const margin = 14;
@@ -282,9 +282,15 @@ function gerarPDF(bonus) {
   doc.setFont('helvetica', 'normal');
   doc.text(`Emitido em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, margin, 17);
 
-  // NFs no cabeçalho
+  // NFs no cabeçalho — mostra números reais se disponíveis, senão quantidade
   if (bonus.notas_fiscais_ids?.length) {
-    const nfTxt = `NFs: ${bonus.notas_fiscais_ids.length} vinculada(s)`;
+    let nfTxt;
+    if (notasVinculadas.length > 0) {
+      const nums = notasVinculadas.map(n => `NF-${n.numero_nf}`).join('  |  ');
+      nfTxt = doc.splitTextToSize(`NFs: ${nums}`, W - margin * 2)[0];
+    } else {
+      nfTxt = `NFs: ${bonus.notas_fiscais_ids.length} vinculada(s)`;
+    }
     doc.text(nfTxt, margin, 23);
   }
 
@@ -465,37 +471,73 @@ function gerarPDF(bonus) {
     drawItensTable(bonus.itens_conferidos_2, '2ª Conferência — Itens Verificados');
   }
 
-  // ── Itens esperados (NFs) ──────────────────────────────────────────
-  if (bonus.itens_esperados?.length) {
+  // ── Itens Pendentes de Conferência ────────────────────────────────
+  // Calcula o que ainda falta: pedido - conferido (apenas positivos)
+  const itensConferidosRef = bonus.itens_conferidos_2?.length
+    ? bonus.itens_conferidos_2
+    : (bonus.itens_conferidos || []);
+
+  const confPorDesc = {};
+  itensConferidosRef.forEach(i => {
+    confPorDesc[i.descricao] = (confPorDesc[i.descricao] || 0) + (i.qtd_caixas || 0);
+  });
+
+  const itensPendentes = (bonus.itens_esperados || [])
+    .map(item => ({
+      ...item,
+      qtd_conferida: confPorDesc[item.descricao] || 0,
+      qtd_pendente: (item.qtd_esperada || 0) - (confPorDesc[item.descricao] || 0),
+    }))
+    .filter(item => item.qtd_pendente > 0);
+
+  if (itensPendentes.length > 0) {
     if (y > 245) { doc.addPage(); y = 20; }
-    addText('Itens Esperados — NFs', margin, y, { bold: true, size: 10 }); y += 7;
+    addText('Itens Pendentes de Conferência', margin, y, { bold: true, size: 10 }); y += 7;
 
-    doc.setFillColor(235, 240, 250);
+    doc.setFillColor(255, 243, 230);
     doc.rect(margin, y - 4.5, W - margin * 2, 6.5, 'F');
-    hLine(y - 4.5, [180, 190, 220]);
-    doc.setTextColor(40, 60, 120);
-    addText('EAN',          margin + 1,  y, { bold: true, size: 7 });
-    addText('Descrição',    margin + 30, y, { bold: true, size: 7 });
-    addText('Qtd Esperada', margin + 155, y, { bold: true, size: 7 });
+    hLine(y - 4.5, [220, 180, 100]);
+    doc.setTextColor(140, 80, 0);
+    addText('EAN',          margin + 1,   y, { bold: true, size: 6.5 });
+    addText('Descrição',    margin + 30,  y, { bold: true, size: 6.5 });
+    addText('Pedido',       margin + 140, y, { bold: true, size: 6.5 });
+    addText('Conferido',    margin + 153, y, { bold: true, size: 6.5 });
+    addText('Pendente',     margin + 166, y, { bold: true, size: 6.5 });
     doc.setTextColor(0, 0, 0);
-    y += 5; hLine(y, [180, 190, 220]); y += 3;
+    y += 5; hLine(y, [220, 180, 100]); y += 3;
 
-    bonus.itens_esperados.forEach((item, idx) => {
+    itensPendentes.forEach((item, idx) => {
       if (y > 272) { doc.addPage(); y = 20; }
       if (idx % 2 === 0) {
-        doc.setFillColor(248, 250, 255);
+        doc.setFillColor(255, 250, 240);
         doc.rect(margin, y - 3.5, W - margin * 2, 5.5, 'F');
       }
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       const eanT  = doc.splitTextToSize((item.ean || '—').toString(), 28)[0];
-      const descT = doc.splitTextToSize((item.descricao || '—').toString(), 124)[0];
-      doc.text(eanT, margin + 1, y);
+      const descT = doc.splitTextToSize((item.descricao || '—').toString(), 108)[0];
+      doc.text(eanT,  margin + 1, y);
       doc.text(descT, margin + 30, y);
-      doc.text((item.qtd_esperada || 0).toLocaleString('pt-BR'), margin + 155, y);
+      doc.setTextColor(80, 80, 80);
+      doc.text(item.qtd_esperada.toString(),  margin + 140, y);
+      doc.text(item.qtd_conferida.toString(), margin + 153, y);
+      doc.setTextColor(180, 30, 30);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`-${item.qtd_pendente}`, margin + 166, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
       y += 5.5;
     });
-    hLine(y); y += 8;
+    hLine(y);
+    y += 4;
+    doc.setFillColor(255, 243, 230);
+    doc.rect(margin, y - 3.5, W - margin * 2, 6, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+    doc.setTextColor(140, 80, 0);
+    const totalPend = itensPendentes.reduce((a, i) => a + i.qtd_pendente, 0);
+    doc.text(`Total pendente: ${totalPend.toLocaleString('pt-BR')} cx`, margin + 3, y + 1);
+    doc.setTextColor(0, 0, 0);
+    y += 12;
   }
 
   doc.save(`Bonus_${bonus.numero_bonus}_Relatorio.pdf`);
@@ -503,7 +545,18 @@ function gerarPDF(bonus) {
 
 export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
   const [authDeleteOpen, setAuthDeleteOpen] = useState(false);
+  const [notasVinculadas, setNotasVinculadas] = useState([]);
   const cfg = STATUS_CONFIG[bonus.status] || STATUS_CONFIG.em_conferencia;
+
+  // Busca os números das NFs vinculadas
+  useEffect(() => {
+    if (!bonus.notas_fiscais_ids?.length) return;
+    Promise.all(
+      bonus.notas_fiscais_ids.map(id => base44.entities.NotaFiscal.filter({ id }))
+    ).then(results => {
+      setNotasVinculadas(results.flatMap(r => r).filter(Boolean));
+    }).catch(() => {});
+  }, [bonus.id]);
 
   const itens1 = bonus.itens_conferidos || [];
   const itens2 = bonus.itens_conferidos_2 || [];
@@ -537,7 +590,7 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => gerarPDF(bonus)}
+            onClick={() => gerarPDF(bonus, notasVinculadas)}
             className="gap-2"
           >
             <FileDown className="w-4 h-4" />
@@ -566,6 +619,17 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
           onVoltar();
         }}
       />
+
+      {/* NFs Vinculadas */}
+      {notasVinculadas.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {notasVinculadas.map(nf => (
+            <span key={nf.id} className="text-xs font-mono bg-muted border border-border rounded px-2 py-1">
+              NF-{nf.numero_nf}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Metadados */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -653,39 +717,51 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
         </section>
       )}
 
-      {/* Itens Esperados (NFs) */}
-      {bonus.itens_esperados?.length > 0 && (
-        <section className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-muted flex items-center justify-center">
-              <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+      {/* Itens Pendentes de Conferência */}
+      {(() => {
+        const confRef = itens2.length ? itens2 : itens1;
+        const confPorDesc = {};
+        confRef.forEach(i => { confPorDesc[i.descricao] = (confPorDesc[i.descricao] || 0) + (i.qtd_caixas || 0); });
+        const pendentes = (bonus.itens_esperados || [])
+          .map(item => ({ ...item, conferido: confPorDesc[item.descricao] || 0, pendente: (item.qtd_esperada || 0) - (confPorDesc[item.descricao] || 0) }))
+          .filter(item => item.pendente > 0);
+        if (pendentes.length === 0) return null;
+        return (
+          <section className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-lg bg-orange-100 flex items-center justify-center">
+                <FileText className="w-3.5 h-3.5 text-orange-600" />
+              </div>
+              <h2 className="font-semibold text-sm">Itens Pendentes de Conferência</h2>
+              <span className="text-xs text-orange-600 font-medium">({pendentes.length} produto(s))</span>
             </div>
-            <h2 className="font-semibold text-sm">Itens Esperados (NFs)</h2>
-          </div>
-          <div className="rounded-xl border border-border overflow-hidden">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="bg-muted/50 border-b border-border">
-                  <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground uppercase">EAN</th>
-                  <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground uppercase">Descrição</th>
-                  <th className="text-right px-3 py-2.5 font-semibold text-muted-foreground uppercase">Qtd Esperada</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {bonus.itens_esperados.map((item, i) => (
-                  <tr key={i} className="hover:bg-muted/30">
-                    <td className="px-3 py-2 font-mono text-muted-foreground">{item.ean || '—'}</td>
-                    <td className="px-3 py-2 font-medium">{item.descricao || '—'}</td>
-                    <td className="px-3 py-2 text-right font-bold tabular-nums">
-                      {(item.qtd_esperada || 0).toLocaleString('pt-BR')}
-                    </td>
+            <div className="rounded-xl border border-orange-200 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-orange-50 border-b border-orange-200">
+                    <th className="text-left px-3 py-2.5 font-semibold text-orange-700 uppercase">EAN</th>
+                    <th className="text-left px-3 py-2.5 font-semibold text-orange-700 uppercase">Descrição</th>
+                    <th className="text-right px-3 py-2.5 font-semibold text-orange-700 uppercase">Pedido</th>
+                    <th className="text-right px-3 py-2.5 font-semibold text-orange-700 uppercase">Conferido</th>
+                    <th className="text-right px-3 py-2.5 font-semibold text-orange-700 uppercase">Pendente</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+                </thead>
+                <tbody className="divide-y divide-orange-100">
+                  {pendentes.map((item, i) => (
+                    <tr key={i} className="hover:bg-orange-50/50">
+                      <td className="px-3 py-2 font-mono text-muted-foreground">{item.ean || '—'}</td>
+                      <td className="px-3 py-2 font-medium">{item.descricao || '—'}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{item.qtd_esperada.toLocaleString('pt-BR')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{item.conferido.toLocaleString('pt-BR')}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums text-red-600">-{item.pendente.toLocaleString('pt-BR')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      })()}
 
       {/* Análise de Divergências */}
       <section className="space-y-2">
