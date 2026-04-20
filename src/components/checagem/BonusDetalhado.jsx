@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import {
   ArrowLeft, AlertTriangle, CheckCircle2, Clock,
-  FileText, Calendar, Package, ShieldCheck, List, FileDown,
+  FileText, Calendar, Package, ShieldCheck, List, FileDown, Trash2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { jsPDF } from 'jspdf';
+import AdminAuthDialog from '@/components/admin/AdminAuthDialog';
 
 const STATUS_CONFIG = {
   em_conferencia: { label: '1ª Conferência', className: 'bg-blue-100 text-blue-700 border-blue-200' },
@@ -356,7 +358,8 @@ function gerarPDF(bonus) {
   doc.save(`Bonus_${bonus.numero_bonus}_Relatorio.pdf`);
 }
 
-export default function BonusDetalhado({ bonus, onVoltar }) {
+export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
+  const [authDeleteOpen, setAuthDeleteOpen] = useState(false);
   const cfg = STATUS_CONFIG[bonus.status] || STATUS_CONFIG.em_conferencia;
 
   const itens1 = bonus.itens_conferidos || [];
@@ -387,16 +390,39 @@ export default function BonusDetalhado({ bonus, onVoltar }) {
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">{bonus.emitente_nome || '—'}</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => gerarPDF(bonus)}
-          className="gap-2 shrink-0"
-        >
-          <FileDown className="w-4 h-4" />
-          Exportar PDF
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => gerarPDF(bonus)}
+            className="gap-2"
+          >
+            <FileDown className="w-4 h-4" />
+            Exportar PDF
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setAuthDeleteOpen(true)}
+            className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+          >
+            <Trash2 className="w-4 h-4" />
+            Excluir
+          </Button>
+        </div>
       </div>
+
+      <AdminAuthDialog
+        open={authDeleteOpen}
+        onOpenChange={setAuthDeleteOpen}
+        title="Excluir Bônus"
+        description="Esta ação é irreversível. Confirme suas credenciais de administrador para excluir este bônus e liberar as NFs vinculadas."
+        onAuthorized={async () => {
+          await base44.entities.BonusRecebimento.delete(bonus.id);
+          onDeleted?.();
+          onVoltar();
+        }}
+      />
 
       {/* Metadados */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

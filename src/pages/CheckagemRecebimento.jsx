@@ -1,18 +1,20 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Search, ClipboardList, ChevronRight, AlertTriangle, CheckCircle2,
-  Clock, ArrowLeft, Package, Calendar, FileText, Eye,
+  Search, ChevronRight, AlertTriangle, CheckCircle2,
+  Clock, Package, Calendar, FileText, Eye, Trash2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { toast } from 'sonner';
 import BonusDetalhado from '@/components/checagem/BonusDetalhado';
+import AdminAuthDialog from '@/components/admin/AdminAuthDialog';
 
 const STATUS_CONFIG = {
   em_conferencia: {
@@ -41,11 +43,21 @@ export default function CheckagemRecebimento() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
   const [bonusSelecionado, setBonusSelecionado] = useState(null);
+  const [authDialog, setAuthDialog] = useState({ open: false, bonusId: null });
+  const queryClient = useQueryClient();
 
   const { data: bonusList = [], isLoading } = useQuery({
     queryKey: ['checagem-bonus'],
     queryFn: () => base44.entities.BonusRecebimento.list('-created_date', 500),
   });
+
+  async function handleDeleteBonus(id) {
+    await base44.entities.BonusRecebimento.delete(id);
+    queryClient.invalidateQueries({ queryKey: ['checagem-bonus'] });
+    queryClient.invalidateQueries({ queryKey: ['bonus-recebimento'] });
+    queryClient.invalidateQueries({ queryKey: ['notas-disponiveis-bonus'] });
+    toast.success('Bônus excluído com sucesso.');
+  }
 
   const filtered = useMemo(() => {
     return bonusList.filter(b => {
@@ -164,7 +176,6 @@ export default function CheckagemRecebimento() {
             const cfg = STATUS_CONFIG[bonus.status] || STATUS_CONFIG.em_conferencia;
             const Icon = cfg.icon;
 
-            // Usa itens_conferidos_2 se existir (bônus finalizado), senão itens_conferidos
             const itensFinais = bonus.itens_conferidos_2?.length
               ? bonus.itens_conferidos_2
               : (bonus.itens_conferidos || []);
@@ -173,82 +184,83 @@ export default function CheckagemRecebimento() {
             const totalEsperado = (bonus.itens_esperados || []).reduce((acc, i) => acc + (i.qtd_esperada || 0), 0);
             const temAvaria = itensFinais.some(i => i.tipo_estoque === 'AVARIA');
             const totalAvarias = itensFinais.filter(i => i.tipo_estoque === 'AVARIA').reduce((acc, i) => acc + (i.qtd_caixas || 0), 0);
-
             const dataFinal = bonus.data_conferencia_2 || bonus.data_conferencia;
 
             return (
-              <Card
-                key={bonus.id}
-                className="border-border hover:border-primary/30 hover:shadow-md transition-all cursor-pointer group"
-                onClick={() => setBonusSelecionado(bonus)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
-                      <Icon className="w-5 h-5 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-sm">Bônus #{bonus.numero_bonus}</span>
-                        <Badge className={`text-[10px] border ${cfg.className}`}>{cfg.label}</Badge>
-                        {temAvaria && (
-                          <Badge className="text-[10px] border bg-red-100 text-red-700 border-red-200 gap-1">
-                            <AlertTriangle className="w-2.5 h-2.5" />
-                            Avaria
-                          </Badge>
-                        )}
-                        {bonus.itens_conferidos_2?.length > 0 && (
-                          <Badge className="text-[10px] border bg-emerald-50 text-emerald-700 border-emerald-200">
-                            Dupla conf.
-                          </Badge>
-                        )}
+              <div key={bonus.id} className="relative group">
+                <Card
+                  className="border-border hover:border-primary/30 hover:shadow-md transition-all cursor-pointer"
+                  onClick={() => setBonusSelecionado(bonus)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
+                        <Icon className="w-5 h-5 text-primary" />
                       </div>
-
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                        {bonus.emitente_nome || 'Emitente não informado'}
-                      </p>
-
-                      <div className="flex items-center gap-3 mt-1.5 flex-wrap text-[11px] text-muted-foreground">
-                        {totalCaixas > 0 && (
-                          <span>
-                            <span className="font-semibold text-foreground">{totalCaixas.toLocaleString('pt-BR')}</span> cx conferidas
-                          </span>
-                        )}
-                        {totalEsperado > 0 && (
-                          <span>
-                            Esperado: <span className="font-semibold text-foreground">{totalEsperado.toLocaleString('pt-BR')}</span> cx
-                          </span>
-                        )}
-                        {totalAvarias > 0 && (
-                          <span className="text-red-600 font-medium">
-                            {totalAvarias.toLocaleString('pt-BR')} cx avariadas
-                          </span>
-                        )}
-                        {bonus.notas_fiscais_ids?.length > 0 && (
-                          <span className="flex items-center gap-1">
-                            <FileText className="w-3 h-3" />
-                            {bonus.notas_fiscais_ids.length} NF(s)
-                          </span>
-                        )}
-                        {dataFinal && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            {format(new Date(dataFinal), "dd/MM/yy 'às' HH:mm", { locale: ptBR })}
-                          </span>
-                        )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-sm">Bônus #{bonus.numero_bonus}</span>
+                          <Badge className={`text-[10px] border ${cfg.className}`}>{cfg.label}</Badge>
+                          {temAvaria && (
+                            <Badge className="text-[10px] border bg-red-100 text-red-700 border-red-200 gap-1">
+                              <AlertTriangle className="w-2.5 h-2.5" />
+                              Avaria
+                            </Badge>
+                          )}
+                          {bonus.itens_conferidos_2?.length > 0 && (
+                            <Badge className="text-[10px] border bg-emerald-50 text-emerald-700 border-emerald-200">
+                              Dupla conf.
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {bonus.emitente_nome || 'Emitente não informado'}
+                        </p>
+                        <div className="flex items-center gap-3 mt-1.5 flex-wrap text-[11px] text-muted-foreground">
+                          {totalCaixas > 0 && (
+                            <span><span className="font-semibold text-foreground">{totalCaixas.toLocaleString('pt-BR')}</span> cx conferidas</span>
+                          )}
+                          {totalEsperado > 0 && (
+                            <span>Esperado: <span className="font-semibold text-foreground">{totalEsperado.toLocaleString('pt-BR')}</span> cx</span>
+                          )}
+                          {totalAvarias > 0 && (
+                            <span className="text-red-600 font-medium">{totalAvarias.toLocaleString('pt-BR')} cx avariadas</span>
+                          )}
+                          {bonus.notas_fiscais_ids?.length > 0 && (
+                            <span className="flex items-center gap-1">
+                              <FileText className="w-3 h-3" />
+                              {bonus.notas_fiscais_ids.length} NF(s)
+                            </span>
+                          )}
+                          {dataFinal && (
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {format(new Date(dataFinal), "dd/MM/yy 'às' HH:mm", { locale: ptBR })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="ghost" size="sm" className="gap-1.5 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Eye className="w-3.5 h-3.5" />
+                          Ver detalhes
+                        </Button>
+                        <ChevronRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-primary transition-colors" />
                       </div>
                     </div>
+                  </CardContent>
+                </Card>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <Button variant="ghost" size="sm" className="gap-1.5 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Eye className="w-3.5 h-3.5" />
-                        Ver detalhes
-                      </Button>
-                      <ChevronRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-primary transition-colors" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                {/* Botão excluir (admin) */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-3 right-10 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10 z-10"
+                  onClick={(e) => { e.stopPropagation(); setAuthDialog({ open: true, bonusId: bonus.id }); }}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
             );
           })}
         </div>
@@ -259,6 +271,14 @@ export default function CheckagemRecebimento() {
           {filtered.length} bônus exibido(s) de {bonusList.length} total
         </p>
       )}
+
+      <AdminAuthDialog
+        open={authDialog.open}
+        onOpenChange={(o) => setAuthDialog({ open: o, bonusId: null })}
+        title="Excluir Bônus"
+        description="Esta ação é irreversível. Confirme suas credenciais de administrador para excluir o bônus."
+        onAuthorized={() => handleDeleteBonus(authDialog.bonusId)}
+      />
     </div>
   );
 }
