@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   ScanBarcode, Plus, CheckCheck, ArrowLeft, ClipboardList,
-  FileText, AlertTriangle, FileDown,
+  FileText, AlertTriangle, FileDown, Trash2
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -61,6 +61,47 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
   const eanRef = useRef(null);
   const qtdBoaRef = useRef(null);
   const qtdAvariaRef = useRef(null);
+
+  // ─── LÓGICA DE AUTOSAVE (RASCUNHO LOCAL) ─────────────────────────────────
+  const DRAFT_KEY = `draft_conferencia_${bonus?.id || 'novo'}`;
+
+  // 1. Carregar rascunho ao montar o componente
+  useEffect(() => {
+    const savedDraft = localStorage.getItem(DRAFT_KEY);
+    if (savedDraft) {
+      try {
+        const parsedDraft = JSON.parse(savedDraft);
+        if (parsedDraft && parsedDraft.length > 0) {
+          setItensConferidos(parsedDraft);
+          toast.info('Rascunho recuperado', {
+            description: 'Continuando de onde você parou.',
+          });
+        }
+      } catch (error) {
+        console.error('Erro ao ler rascunho:', error);
+      }
+    }
+  }, [DRAFT_KEY]);
+
+  // 2. Salvar rascunho sempre que os itens mudarem
+  useEffect(() => {
+    if (itensConferidos.length > 0) {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(itensConferidos));
+    } else {
+      // Se a lista ficar vazia, remove a chave para manter limpo
+      localStorage.removeItem(DRAFT_KEY);
+    }
+  }, [itensConferidos, DRAFT_KEY]);
+
+  // 3. Função para abortar manualmente a conferência e limpar a tela
+  const handleLimparRascunho = () => {
+    if (window.confirm("Deseja apagar tudo o que já foi bipado e recomeçar a conferência?")) {
+      setItensConferidos([]);
+      localStorage.removeItem(DRAFT_KEY);
+      toast.success("Rascunho apagado. Tela limpa.");
+    }
+  };
+  // ───────────────────────────────────────────────────────────────────────────
 
   // ── Busca produto pelo EAN ───────────────────────────────────────────────
   const buscarProduto = useCallback(async (ean) => {
@@ -280,6 +321,9 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
 
       await base44.entities.BonusRecebimento.update(bonus.id, updatePayload);
       setDialogAberto(false);
+
+      // APÓS SALVAR COM SUCESSO: Limpa o rascunho local
+      localStorage.removeItem(DRAFT_KEY);
 
       if (is2aConferencia) {
         if (divergencias.length > 0) {
@@ -517,13 +561,26 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Botão Limpar Rascunho */}
+          {itensConferidos.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleLimparRascunho}
+              className="text-muted-foreground hover:text-destructive h-8 px-2"
+            >
+              <Trash2 className="w-4 h-4 mr-1.5" />
+              Limpar Conferência
+            </Button>
+          )}
+
           {/* Botão Termo de Avaria */}
           {temAvaria && (
             <Button
               variant="outline"
               size="sm"
               onClick={handleGerarTermoPdf}
-              className="gap-2 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30"
+              className="gap-2 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30 h-8"
             >
               <FileDown className="w-3.5 h-3.5" />
               Termo de Avaria (PDF)
@@ -531,7 +588,7 @@ export default function BonusConferencia({ bonus, onConferenciaConcluida, onVolt
           )}
 
           {totalCaixas > 0 && (
-            <p className="text-xs text-muted-foreground tabular-nums">
+            <p className="text-xs text-muted-foreground tabular-nums ml-2">
               Total: <span className="font-bold text-foreground">{totalCaixas.toLocaleString('pt-BR')}</span> cx
             </p>
           )}
