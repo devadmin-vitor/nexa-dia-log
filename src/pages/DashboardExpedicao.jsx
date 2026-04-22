@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
-  Search, Calendar, Trash2, PackageCheck, FilterX, Truck
+  Search, Calendar, Trash2, PackageCheck, FilterX, Truck, AlertTriangle
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -17,58 +17,57 @@ import AdminAuthDialog from '@/components/admin/AdminAuthDialog';
 export default function DashboardExpedicao() {
   const queryClient = useQueryClient();
 
-  // ─── ESTADOS DOS CAMPOS DE INPUT ──────────────────────────────────────
   const [inputFornecedor, setInputFornecedor] = useState('');
   const [inputDataInicial, setInputDataInicial] = useState('');
   const [inputDataFinal, setInputDataFinal] = useState('');
 
-  // ─── ESTADOS DOS FILTROS APLICADOS (Acionados pelo botão Pesquisar) ──
   const [filtrosAtivos, setFiltrosAtivos] = useState({
     busca: '',
     dataInicial: '',
     dataFinal: '',
   });
 
-  // ─── ESTADOS DE AUTENTICAÇÃO (EXCLUSÃO) ──────────────────────────────
   const [authOpen, setAuthOpen] = useState(false);
   const [expedicaoSelecionada, setExpedicaoSelecionada] = useState(null);
 
-  // ─── BUSCA DE DADOS NO BANCO ─────────────────────────────────────────
-  const { data: expedicoes = [], isLoading } = useQuery({
+  // ─── BUSCA DE DADOS COM TRATAMENTO DE ERROS ────────────────────────
+  // IMPORTANTE: Se a sua tabela não se chamar "Expedicao", altere na linha abaixo!
+  const { data: expedicoes = [], isLoading, isError, error } = useQuery({
     queryKey: ['lista-expedicoes'],
-    queryFn: () => base44.entities.Expedicao.list('-created_date', 500),
+    queryFn: async () => {
+      try {
+        const resposta = await base44.entities.Expedicao.list('-created_date', 500);
+        console.log("Dados que chegaram da API:", resposta); // Ajuda a debugar no F12
+        return resposta || [];
+      } catch (err) {
+        console.error("Erro ao buscar expedições:", err);
+        throw err;
+      }
+    },
   });
 
-  // ─── LÓGICA DOS FILTROS ──────────────────────────────────────────────
   const filtradas = useMemo(() => {
     return expedicoes.filter((exp) => {
-      // Filtro por Fornecedor/Cliente/Destino
       const termo = filtrosAtivos.busca.toLowerCase();
-      // Garantimos que a leitura dos campos é segura (fallback para string vazia)
       const nomeDestino = String(exp.destino_nome || exp.fornecedor_nome || exp.emitente_nome || '').toLowerCase();
       const matchFornecedor = !filtrosAtivos.busca || nomeDestino.includes(termo);
 
-      // Filtro por Data (Lida com diferentes formatos de data que podem vir do banco)
       let matchDataInicial = true;
       let matchDataFinal = true;
 
-      // Usamos a data de criação ou qualquer campo de data disponível
       const dataString = exp.created_date || exp.data_criacao || exp.data;
 
       if (dataString) {
         const expData = new Date(dataString);
-        
         if (filtrosAtivos.dataInicial) {
            const dtInicial = new Date(filtrosAtivos.dataInicial + 'T00:00:00');
            matchDataInicial = expData >= dtInicial;
         }
-        
         if (filtrosAtivos.dataFinal) {
            const dtFinal = new Date(filtrosAtivos.dataFinal + 'T23:59:59');
            matchDataFinal = expData <= dtFinal;
         }
       } else if (filtrosAtivos.dataInicial || filtrosAtivos.dataFinal) {
-        // Se o registro não tem data, mas o usuário filtrou por data, ele é excluído
         return false;
       }
 
@@ -76,7 +75,6 @@ export default function DashboardExpedicao() {
     });
   }, [expedicoes, filtrosAtivos]);
 
-  // Aplicar Filtros (Botão Pesquisar)
   const handlePesquisar = () => {
     setFiltrosAtivos({
       busca: inputFornecedor,
@@ -85,7 +83,6 @@ export default function DashboardExpedicao() {
     });
   };
 
-  // Limpar Filtros
   const limparFiltros = () => {
     setInputFornecedor('');
     setInputDataInicial('');
@@ -97,14 +94,10 @@ export default function DashboardExpedicao() {
     });
   };
 
-  // Tratar Enter nos inputs
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      handlePesquisar();
-    }
+    if (e.key === 'Enter') handlePesquisar();
   };
 
-  // ─── LÓGICA DE EXCLUSÃO ──────────────────────────────────────────────
   const abrirModalExclusao = (expedicao) => {
     setExpedicaoSelecionada(expedicao);
     setAuthOpen(true);
@@ -113,34 +106,29 @@ export default function DashboardExpedicao() {
   const handleExcluirAutorizado = async () => {
     try {
       await base44.entities.Expedicao.delete(expedicaoSelecionada.id);
-      toast.success('Expedição excluída com sucesso pelo Administrador.');
+      toast.success('Expedição excluída pelo Administrador.');
       queryClient.invalidateQueries({ queryKey: ['lista-expedicoes'] });
-    } catch (error) {
-      toast.error('Erro ao excluir expedição: ' + error.message);
+    } catch (err) {
+      toast.error('Erro ao excluir: ' + err.message);
     } finally {
       setAuthOpen(false);
       setExpedicaoSelecionada(null);
     }
   };
 
-  // Helper para formatar a data de forma segura
   const formatarDataSegura = (dataString) => {
     if (!dataString) return 'Data Indisponível';
     try {
       return format(parseISO(dataString), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR });
     } catch (e) {
-       // Fallback caso a data não seja ISO
-       try {
-         return format(new Date(dataString), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR });
-       } catch (e2) {
-         return dataString;
-       }
+       try { return format(new Date(dataString), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR }); } 
+       catch (e2) { return dataString; }
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* ─── CABEÇALHO ─────────────────────────────────────────────────── */}
+      {/* CABEÇALHO */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Truck className="w-6 h-6 text-primary" />
@@ -151,11 +139,10 @@ export default function DashboardExpedicao() {
         </p>
       </div>
 
-      {/* ─── BARRA DE FILTROS ──────────────────────────────────────────── */}
+      {/* FILTROS */}
       <Card className="bg-muted/30 border-border">
         <CardContent className="p-4">
           <div className="flex flex-col md:flex-row gap-4 items-end">
-            
             <div className="flex-1 w-full space-y-1.5">
               <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                 Fornecedor / Destino
@@ -226,18 +213,42 @@ export default function DashboardExpedicao() {
         </CardContent>
       </Card>
 
-      {/* ─── LISTAGEM DE EXPEDIÇÕES ────────────────────────────────────── */}
+      {/* LISTAGEM INTELIGENTE DE ESTADOS */}
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
         </div>
+      ) : isError ? (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="py-12 text-center text-red-600">
+            <AlertTriangle className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <p className="font-bold text-lg">Erro ao conectar com a base de dados</p>
+            <p className="text-sm mt-1">{error?.message || 'Verifique se a entidade "Expedicao" existe na sua API base44.'}</p>
+          </CardContent>
+        </Card>
+      ) : expedicoes.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="py-16 text-center">
+            <Truck className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+            <p className="font-medium text-foreground text-lg">
+              Banco de Dados Vazio
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Não existe nenhuma expedição cadastrada no sistema ainda.<br/>
+              (Ou o nome da tabela no backend é diferente de "Expedicao").
+            </p>
+          </CardContent>
+        </Card>
       ) : filtradas.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="py-16 text-center">
-            <PackageCheck className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+            <FilterX className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
             <p className="text-sm font-medium text-muted-foreground">
-              Nenhuma expedição encontrada para os filtros aplicados.
+              Nenhuma expedição encontrada para os filtros de busca aplicados.
             </p>
+            <Button variant="link" onClick={limparFiltros} className="mt-2 text-primary">
+              Limpar Filtros
+            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -246,11 +257,10 @@ export default function DashboardExpedicao() {
             <Card key={exp.id} className="group overflow-hidden hover:shadow-md transition-all border-border">
               <CardContent className="p-5 flex flex-col md:flex-row items-center gap-4">
                 
-                {/* Info Principal */}
-                <div className="flex-1 space-y-1">
+                <div className="flex-1 space-y-1 w-full">
                   <div className="flex items-center gap-3">
                     <span className="font-mono font-bold text-lg">
-                      #{exp.numero_expedicao || exp.id.slice(0,6).toUpperCase()}
+                      #{exp.numero_expedicao || exp.id?.slice(0,6).toUpperCase()}
                     </span>
                     <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
                       {exp.status || 'Concluída'}
@@ -265,8 +275,7 @@ export default function DashboardExpedicao() {
                   </p>
                 </div>
 
-                {/* Volumes / Metadados */}
-                <div className="text-center md:text-right px-4 border-l border-border hidden sm:block">
+                <div className="text-left md:text-right px-0 md:px-4 border-l-0 md:border-l border-border w-full md:w-auto mt-4 md:mt-0">
                   <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1 font-semibold">
                     Volumes
                   </p>
@@ -275,7 +284,6 @@ export default function DashboardExpedicao() {
                   </p>
                 </div>
 
-                {/* Ações */}
                 <div className="flex items-center gap-2 mt-4 md:mt-0 border-t md:border-t-0 border-border pt-4 md:pt-0 w-full md:w-auto justify-end">
                   <Button 
                     variant="destructive" 
@@ -294,7 +302,7 @@ export default function DashboardExpedicao() {
         </div>
       )}
 
-      {/* ─── MODAL DE AUTENTICAÇÃO DO ADMIN ────────────────────────────── */}
+      {/* MODAL ADMIN */}
       <AdminAuthDialog
         open={authOpen}
         onOpenChange={setAuthOpen}
@@ -302,7 +310,6 @@ export default function DashboardExpedicao() {
         description={`Por favor, insira as credenciais de administrador para excluir permanentemente a expedição.`}
         onAuthorized={handleExcluirAutorizado}
       />
-      
     </div>
   );
 }
