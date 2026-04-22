@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   ArrowLeft, AlertTriangle, CheckCircle2, Clock,
   FileText, Calendar, ShieldCheck, List, FileDown, Trash2,
-  Copy, CheckSquare, // <-- CheckSquare adicionado
+  Copy, CheckSquare,
 } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -229,9 +229,7 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
   const maxY = H - 18;
   let y = 14;
 
-  // ── Colunas (ajustam-se ao layout) ───────────────────────────────────────
   const tableW = W - margin * 2;
-  // proporções fixas em %
   const COL = {
     ean:      { x: margin + 1,                         w: tableW * 0.13 },
     desc:     { x: margin + tableW * 0.13 + 1,         w: tableW * 0.30 },
@@ -262,7 +260,6 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
   const newPage = () => { doc.addPage(); y = 20; };
   const checkY = (need = 10) => { if (y + need > maxY) newPage(); };
 
-  // ── Cabeçalho verde — altura dinâmica para múltiplas linhas de NF ────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
   let nfLines = [];
@@ -283,7 +280,6 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
   doc.setFontSize(8);
   doc.setFont('helvetica', 'normal');
 
-  // Linha de filtros ativos no cabeçalho
   doc.text(`Emitido em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}`, margin, 17);
 
   if (nfLines.length > 0) {
@@ -295,7 +291,6 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
   doc.setTextColor(0, 0, 0);
   y = headerH + 6;
 
-  // ── Resumo ────────────────────────────────────────────────────────────────
   const totalConferido1 = (bonus.itens_conferidos || []).reduce((a, i) => a + (i.qtd_caixas || 0), 0);
   const totalConferido2 = (bonus.itens_conferidos_2 || []).reduce((a, i) => a + (i.qtd_caixas || 0), 0);
   const totalPedido = (bonus.itens_esperados || []).reduce((a, i) => a + (i.qtd_esperada || 0), 0);
@@ -335,13 +330,11 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
   y += 4;
   hLine(y); y += 6;
 
-  // ── Mapa esperados por descrição ─────────────────────────────────────────
   const espPorDesc = {};
   (bonus.itens_esperados || []).forEach(i => {
     espPorDesc[i.descricao] = (espPorDesc[i.descricao] || 0) + (i.qtd_esperada || 0);
   });
 
-  // ── Tabela de itens ───────────────────────────────────────────────────────
   const drawItensTable = (itens, titulo) => {
     if (!itens || itens.length === 0) return;
     checkY(20);
@@ -372,7 +365,6 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
       const qtdPed  = espPorDesc[item.descricao] || 0;
       const diff    = qtdConf - qtdPed;
 
-      // Aplicar filtros de sobra/falta/avaria
       if (isAvaria && !filtros.avarias) return;
       if (!isAvaria) {
         const isSobra = diff > 0;
@@ -438,7 +430,6 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
     drawItensTable(bonus.itens_conferidos_2, '2ª Conferência — Itens Verificados');
   }
 
-  // ── Itens Pendentes (Faltas) ──────────────────────────────────────────────
   if (filtros.faltas) {
     const itensConferidosRef = bonus.itens_conferidos_2?.length ? bonus.itens_conferidos_2 : (bonus.itens_conferidos || []);
     const confPorDesc = {};
@@ -494,12 +485,27 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
 
 // ─── Componente principal ────────────────────────────────────────────────────
 export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
+  
+  // 1. TRAVA DE SEGURANÇA ADICIONADA AQUI (Evita o Crash da tela branca)
+  if (!bonus) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 space-y-4">
+        <AlertTriangle className="w-10 h-10 text-amber-500" />
+        <p className="text-muted-foreground font-medium">Carregando informações do bônus...</p>
+        <Button onClick={onVoltar} variant="outline" className="mt-4">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Voltar para Lista
+        </Button>
+      </div>
+    );
+  }
+
   const [authDeleteOpen, setAuthDeleteOpen] = useState(false);
   const [confirmReplicacaoOpen, setConfirmReplicacaoOpen] = useState(false);
   const [authReplicacaoOpen, setAuthReplicacaoOpen] = useState(false);
   const [replicando, setReplicando] = useState(false);
   
-  // ─── NOVO: Estado para Forçar Conclusão ──────────────────────────────────
+  // Estado para Forçar Conclusão
   const [authForceCompleteOpen, setAuthForceCompleteOpen] = useState(false);
 
   const [notasVinculadas, setNotasVinculadas] = useState([]);
@@ -545,7 +551,7 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
     }
   };
 
-  // ─── NOVO: Função para Forçar Conclusão (Admin) ──────────────────────────
+  // Função para Forçar Conclusão (Admin)
   const handleForcarConclusao = async () => {
     try {
       const itensForcados = (bonus.itens_esperados || []).map(item => ({
@@ -568,7 +574,7 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
         data_conferencia: new Date().toISOString()
       });
       toast.success('Bônus forçado como Conferido com sucesso!');
-      onVoltar(); // Volta para a tela anterior para forçar o recarregamento
+      onVoltar(); 
     } catch (err) {
       toast.error('Erro ao forçar conclusão: ' + err.message);
     }
@@ -604,7 +610,7 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           
-          {/* ─── NOVO: Botão Forçar Conclusão ────────────────────────────── */}
+          {/* Botão Forçar Conclusão */}
           {bonus.status !== 'conferido' && (
             <Button
               variant="outline"
@@ -668,7 +674,7 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
         onAuthorized={handleReplicar}
       />
 
-      {/* ─── NOVO: Dialog de credenciais admin para Forçar Conclusão ──────── */}
+      {/* Dialog de credenciais admin para Forçar Conclusão */}
       <AdminAuthDialog
         open={authForceCompleteOpen}
         onOpenChange={setAuthForceCompleteOpen}
