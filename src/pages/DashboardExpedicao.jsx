@@ -1,202 +1,233 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
-import {
-  Weight, Truck, Users, ChevronRight,
-  TrendingUp, CheckCircle2, AlertTriangle,
+import { 
+  Search, Calendar, Trash2, PackageCheck, FilterX, Truck
 } from 'lucide-react';
-import { format, startOfDay, endOfDay } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-
-const hoje = format(new Date(), 'yyyy-MM-dd');
+import { toast } from 'sonner';
+import AdminAuthDialog from '@/components/admin/AdminAuthDialog';
 
 export default function DashboardExpedicao() {
-  const { data: notas = [], isLoading: loadingNotas } = useQuery({
-    queryKey: ['notas-expedicao-all'],
-    queryFn: () => base44.entities.NotaFiscal.list('-created_date', 9999),
+  const queryClient = useQueryClient();
+
+  // ─── ESTADOS DOS FILTROS ─────────────────────────────────────────────
+  const [buscaFornecedor, setBuscaFornecedor] = useState('');
+  const [dataInicial, setDataInicial] = useState('');
+  const [dataFinal, setDataFinal] = useState('');
+
+  // ─── ESTADOS DE AUTENTICAÇÃO (EXCLUSÃO) ──────────────────────────────
+  const [authOpen, setAuthOpen] = useState(false);
+  const [expedicaoSelecionada, setExpedicaoSelecionada] = useState(null);
+
+  // ─── BUSCA DE DADOS NO BANCO ─────────────────────────────────────────
+  // Substitua 'Expedicao' pelo nome exato da sua entidade no base44, se for diferente
+  const { data: expedicoes = [], isLoading } = useQuery({
+    queryKey: ['lista-expedicoes'],
+    queryFn: () => base44.entities.Expedicao.list('-created_date', 500),
   });
 
-  const { data: configs = [], isLoading: loadingConfig } = useQuery({
-    queryKey: ['dashboard-config'],
-    queryFn: () => base44.entities.DashboardConfig.list(),
-  });
+  // ─── LÓGICA DOS FILTROS ──────────────────────────────────────────────
+  const filtradas = useMemo(() => {
+    return expedicoes.filter((exp) => {
+      // Filtro por Fornecedor/Cliente/Destino (ajuste o campo conforme seu banco)
+      const termo = buscaFornecedor.toLowerCase();
+      const nomeDestino = String(exp.destino_nome || exp.fornecedor_nome || '').toLowerCase();
+      const matchFornecedor = !buscaFornecedor || nomeDestino.includes(termo);
 
-  const { data: expedicoes = [], isLoading: loadingExp } = useQuery({
-    queryKey: ['expedicoes-hoje', hoje],
-    queryFn: () => base44.entities.ExpedicaoVeiculo.filter({ data_expedicao: hoje }),
-  });
+      // Filtro por Data
+      const expData = new Date(exp.created_date);
+      const matchDataInicial = !dataInicial || expData >= new Date(dataInicial + 'T00:00:00');
+      const matchDataFinal = !dataFinal || expData <= new Date(dataFinal + 'T23:59:59');
 
-  // Bônus conferidos hoje (qualquer status que não seja em_conferencia)
-  const { data: bonusHoje = [], isLoading: loadingBonus } = useQuery({
-    queryKey: ['bonus-conferidos-hoje', hoje],
-    queryFn: async () => {
-      const todos = await base44.entities.BonusRecebimento.list('-created_date', 9999);
-      const inicioDia = startOfDay(new Date()).toISOString();
-      const fimDia = endOfDay(new Date()).toISOString();
-      return todos.filter(b => {
-        const conferidoEm = b.data_conferencia || b.data_conferencia_2 || b.created_date;
-        return (
-          (b.status === 'conferido' || b.status === 'divergente' || b.status === 'aguardando_2a_conferencia') &&
-          conferidoEm >= inicioDia && conferidoEm <= fimDia
-        );
-      });
-    },
-  });
+      return matchFornecedor && matchDataInicial && matchDataFinal;
+    });
+  }, [expedicoes, buscaFornecedor, dataInicial, dataFinal]);
 
-  const isLoading = loadingNotas || loadingConfig || loadingExp || loadingBonus;
-  const config = configs[0] || { valor_por_kg: 0.01, meta_veiculos_dia: 8 };
+  // Limpar Filtros
+  const limparFiltros = () => {
+    setBuscaFornecedor('');
+    setDataInicial('');
+    setDataFinal('');
+  };
 
-  // Cálculos gerais (todas as NFs)
-  const pesoTotalKg = notas.reduce((acc, nf) => acc + (nf.peso_bruto || 0), 0);
-  const valorPremiacao = pesoTotalKg * (config.valor_por_kg || 0.01);
+  // ─── LÓGICA DE EXCLUSÃO ──────────────────────────────────────────────
+  const abrirModalExclusao = (expedicao) => {
+    setExpedicaoSelecionada(expedicao);
+    setAuthOpen(true);
+  };
 
-  // Veículos = bônus conferidos hoje
-  const veiculosHoje = bonusHoje.length;
-  const metaVeiculos = config.meta_veiculos_dia || 8;
-  const acimaMeta = veiculosHoje > metaVeiculos;
-  const atingiuMetaVeiculos = veiculosHoje >= metaVeiculos;
+  const handleExcluirAutorizado = async () => {
+    try {
+      await base44.entities.Expedicao.delete(expedicaoSelecionada.id);
+      toast.success('Expedição excluída com sucesso pelo Administrador.');
+      queryClient.invalidateQueries({ queryKey: ['lista-expedicoes'] });
+    } catch (error) {
+      toast.error('Erro ao excluir expedição: ' + error.message);
+    } finally {
+      setAuthOpen(false);
+      setExpedicaoSelecionada(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard de Expedição</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {format(new Date(), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" asChild className="gap-2">
-            <Link to="/expedicoes">
-              <Truck className="w-4 h-4" />
-              Nova Expedição
-            </Link>
-          </Button>
-        </div>
+      {/* ─── CABEÇALHO ─────────────────────────────────────────────────── */}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <Truck className="w-6 h-6 text-primary" />
+          Dashboard de Expedição
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Gerencie e acompanhe as saídas de mercadorias.
+        </p>
       </div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2].map(i => <Skeleton key={i} className="h-36 rounded-xl" />)}
-        </div>
-      ) : (
-        <>
-          {/* Cards de KPIs */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-            {/* Card 1: Peso / Premiação */}
-            <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-background">
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <Weight className="w-4 h-4 text-primary" />
-                  </div>
-                  <p className="text-sm font-semibold text-muted-foreground">Peso & Premiação</p>
-                </div>
-                <p className="text-3xl font-bold tabular-nums">
-                  {pesoTotalKg.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}
-                  <span className="text-base font-normal text-muted-foreground ml-1">kg</span>
-                </p>
-                <p className="text-lg font-semibold text-primary mt-1 tabular-nums">
-                  {valorPremiacao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                  <span className="text-xs font-normal text-muted-foreground ml-1">acumulado</span>
-                </p>
-                <p className="text-[10px] text-muted-foreground mt-2">
-                  {(config.valor_por_kg || 0.01).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/kg
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Card 2: Bônus conferidos hoje (= veículos) */}
-            <Card className={`border-2 ${acimaMeta ? 'border-orange-400/50 bg-gradient-to-br from-orange-50 to-background dark:from-orange-950/20' : atingiuMetaVeiculos ? 'border-emerald-400/50 bg-gradient-to-br from-emerald-50 to-background dark:from-emerald-950/20' : 'border-border'}`}>
-              <CardContent className="p-5">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${acimaMeta ? 'bg-orange-100 dark:bg-orange-900/30' : atingiuMetaVeiculos ? 'bg-emerald-100 dark:bg-emerald-900/30' : 'bg-muted'}`}>
-                    <Truck className={`w-4 h-4 ${acimaMeta ? 'text-orange-600' : atingiuMetaVeiculos ? 'text-emerald-600' : 'text-muted-foreground'}`} />
-                  </div>
-                  <p className="text-sm font-semibold text-muted-foreground">Bônus Conferidos Hoje</p>
-                  </div>
-                  <p className="text-3xl font-bold tabular-nums">
-                  {veiculosHoje}
-                  <span className="text-base font-normal text-muted-foreground ml-1">/ {metaVeiculos}</span>
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">meta do dia</p>
-                <Badge className={`mt-2 text-xs gap-1 ${acimaMeta
-                  ? 'bg-orange-100 text-orange-700 border-orange-300 dark:bg-orange-900/30 dark:text-orange-400'
-                  : atingiuMetaVeiculos
-                  ? 'bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-400'
-                  : 'bg-secondary text-secondary-foreground border-border'}`}>
-                  {acimaMeta ? <AlertTriangle className="w-3 h-3" /> : atingiuMetaVeiculos ? <CheckCircle2 className="w-3 h-3" /> : <TrendingUp className="w-3 h-3" />}
-                  {acimaMeta ? 'Acima da meta' : atingiuMetaVeiculos ? 'Meta atingida' : 'Em andamento'}
-                </Badge>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Lista de bônus conferidos hoje */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold">Bônus Conferidos Hoje</h2>
-              <Button variant="ghost" size="sm" asChild className="gap-1 text-xs">
-                <Link to="/bonus">
-                  Ver todos <ChevronRight className="w-3 h-3" />
-                </Link>
-              </Button>
+      {/* ─── BARRA DE FILTROS ──────────────────────────────────────────── */}
+      <Card className="bg-muted/30 border-border">
+        <CardContent className="p-4">
+          <div className="flex flex-col md:flex-row gap-4 items-end">
+            
+            <div className="flex-1 w-full space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Fornecedor / Destino
+              </label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Digite o nome..."
+                  className="pl-9 bg-background"
+                  value={buscaFornecedor}
+                  onChange={(e) => setBuscaFornecedor(e.target.value)}
+                />
+              </div>
             </div>
 
-            {bonusHoje.length === 0 ? (
-              <Card>
-                <CardContent className="py-10 text-center">
-                  <Truck className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">Nenhum bônus conferido hoje.</p>
-                  <Button size="sm" className="mt-4 gap-2" asChild>
-                    <Link to="/bonus">
-                      <Truck className="w-4 h-4" />
-                      Ir para Bônus
-                    </Link>
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-2">
-                {bonusHoje.map(b => (
-                  <Card key={b.id} className="border-border hover:border-primary/30 transition-colors">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
-                          <Truck className="w-5 h-5 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-bold text-sm">Bônus #{b.numero_bonus}</span>
-                            <Badge variant="secondary" className="text-[10px]">
-                              {b.status === 'conferido' ? 'Conferido' : b.status === 'divergente' ? 'Divergente' : '2ª Conf.'}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                            {b.emitente_nome || '—'}
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-xs text-muted-foreground">
-                            {b.notas_fiscais_ids?.length || 0} NF(s)
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+            <div className="w-full md:w-40 space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Data Inicial
+              </label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  type="date"
+                  className="pl-9 bg-background"
+                  value={dataInicial}
+                  onChange={(e) => setDataInicial(e.target.value)}
+                />
               </div>
-            )}
+            </div>
+
+            <div className="w-full md:w-40 space-y-1.5">
+              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Data Final
+              </label>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  type="date"
+                  className="pl-9 bg-background"
+                  value={dataFinal}
+                  onChange={(e) => setDataFinal(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <Button 
+              variant="outline" 
+              className="w-full md:w-auto text-muted-foreground hover:text-foreground gap-2 shrink-0"
+              onClick={limparFiltros}
+            >
+              <FilterX className="w-4 h-4" />
+              Limpar
+            </Button>
           </div>
-        </>
+        </CardContent>
+      </Card>
+
+      {/* ─── LISTAGEM DE EXPEDIÇÕES ────────────────────────────────────── */}
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
+        </div>
+      ) : filtradas.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="py-16 text-center">
+            <PackageCheck className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
+            <p className="text-sm font-medium text-muted-foreground">
+              Nenhuma expedição encontrada para os filtros aplicados.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {filtradas.map(exp => (
+            <Card key={exp.id} className="group overflow-hidden hover:shadow-md transition-all border-border">
+              <CardContent className="p-5 flex flex-col md:flex-row items-center gap-4">
+                
+                {/* Info Principal */}
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono font-bold text-lg">
+                      #{exp.numero_expedicao || exp.id.slice(0,6).toUpperCase()}
+                    </span>
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                      {exp.status || 'Concluída'}
+                    </Badge>
+                  </div>
+                  <p className="text-sm font-medium">
+                    Destino: <span className="text-muted-foreground">{exp.destino_nome || exp.fornecedor_nome || 'N/A'}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5" />
+                    {format(parseISO(exp.created_date), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
+                  </p>
+                </div>
+
+                {/* Volumes / Metadados */}
+                <div className="text-center md:text-right px-4 border-l border-border hidden sm:block">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1 font-semibold">
+                    Volumes
+                  </p>
+                  <p className="text-xl font-bold tabular-nums">
+                    {exp.total_volumes || 0} <span className="text-sm font-normal text-muted-foreground">cx</span>
+                  </p>
+                </div>
+
+                {/* Ações */}
+                <div className="flex items-center gap-2 mt-4 md:mt-0 border-t md:border-t-0 border-border pt-4 md:pt-0 w-full md:w-auto justify-end">
+                  <Button 
+                    variant="destructive" 
+                    size="sm" 
+                    className="gap-2 w-full md:w-auto"
+                    onClick={() => abrirModalExclusao(exp)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Excluir
+                  </Button>
+                </div>
+
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       )}
+
+      {/* ─── MODAL DE AUTENTICAÇÃO DO ADMIN ────────────────────────────── */}
+      <AdminAuthDialog
+        open={authOpen}
+        onOpenChange={setAuthOpen}
+        title="Autorizar Exclusão de Expedição"
+        description={`Por favor, insira as credenciais de administrador para excluir permanentemente a expedição.`}
+        onAuthorized={handleExcluirAutorizado}
+      />
+      
     </div>
   );
 }
