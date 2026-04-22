@@ -157,10 +157,10 @@ export default function CheckagemRecebimento() {
     });
   }, [bonusList, search, filterStatus]);
 
-  if (bonusSelecionado) {
+if (bonusSelecionado) {
     return (
       <BonusDetalhado 
-        bonusId={bonusSelecionado.id} 
+        bonus={bonusSelecionado} 
         onVoltar={() => setBonusSelecionado(null)} 
       />
     );
