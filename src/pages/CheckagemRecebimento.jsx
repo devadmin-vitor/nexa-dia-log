@@ -7,14 +7,20 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  Search, ChevronRight, AlertTriangle, CheckCircle2,
+  Search, AlertTriangle, CheckCircle2,
   Clock, Package, Calendar, FileText, Eye, Trash2, CheckSquare
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import BonusDetalhado from '@/components/checagem/BonusDetalhado';
-import AdminAuthDialog from '@/components/admin/AdminAuthDialog';
+
+// Importação do AlertDialog nativo do Shadcn
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel,
+  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const STATUS_CONFIG = {
   em_conferencia: {
@@ -44,8 +50,13 @@ export default function CheckagemRecebimento() {
   const [filterStatus, setFilterStatus] = useState('todos');
   const [bonusSelecionado, setBonusSelecionado] = useState(null);
   
-  // Controle do fluxo de Autenticação Admin
-  const [authDialog, setAuthDialog] = useState({ open: false, bonus: null, acao: null });
+  // Controle do fluxo de Autenticação Admin (Inline)
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authLogin, setAuthLogin] = useState('');
+  const [authSenha, setAuthSenha] = useState('');
+  const [authAcao, setAuthAcao] = useState(null); // 'excluir' ou 'forcar_conclusao'
+  const [authBonus, setAuthBonus] = useState(null);
+
   const queryClient = useQueryClient();
 
   const { data: bonusList = [], isLoading } = useQuery({
@@ -53,63 +64,85 @@ export default function CheckagemRecebimento() {
     queryFn: () => base44.entities.BonusRecebimento.list('-created_date', 500),
   });
 
-  // Função para abrir o Auth Dialog pedindo a Exclusão
+  // Abre o modal de credenciais para Excluir
   function handleRequestDelete(bonus) {
-    setAuthDialog({ open: true, bonus, acao: 'excluir' });
+    setAuthBonus(bonus);
+    setAuthAcao('excluir');
+    setAuthOpen(true);
   }
 
-  // Função para abrir o Auth Dialog pedindo a Finalização Forçada
+  // Abre o modal de credenciais para Forçar Finalização
   function handleRequestForceComplete(bonus) {
-    setAuthDialog({ open: true, bonus, acao: 'forcar_conclusao' });
+    setAuthBonus(bonus);
+    setAuthAcao('forcar_conclusao');
+    setAuthOpen(true);
   }
 
-  // Função que o AdminAuthDialog irá chamar se a senha estiver correta
-  async function handleAdminAuthSuccess() {
-    const { bonus, acao } = authDialog;
-    
-    try {
-      if (acao === 'excluir') {
-        await base44.entities.BonusRecebimento.delete(bonus.id);
-        toast.success('Bônus excluído com sucesso pelo Administrador.');
-      } 
+  // Validação e Execução das Credenciais
+  async function handleConfirmAuth(e) {
+    e.preventDefault(); // Impede o dialog de fechar sozinho em caso de erro de senha
+
+    // O .trim() evita que espaços acidentais (copiar e colar) deem erro de login
+    if (authLogin.trim() === 'admin' && authSenha === 'amintor') {
+      // Credenciais válidas: Fecha o modal e limpa os campos
+      setAuthOpen(false);
+      setAuthLogin('');
+      setAuthSenha('');
       
-      else if (acao === 'forcar_conclusao') {
-        // Lógica para transformar itens_esperados em itens_conferidos
-        const itensConferidosForcados = (bonus.itens_esperados || []).map(item => ({
-          id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-          ean: item.ean || 'SEM-EAN',
-          descricao: item.descricao,
-          qtd_caixas: item.qtd_esperada,
-          tipo_estoque: 'BOM',
-          norma_palete: 0,
-          paletes_cheios: 0,
-          caixas_soltas: item.qtd_esperada,
-          qtd_paletes: `${item.qtd_esperada} cx`,
-          endereco_id: null,
-          validade: format(new Date(), 'yyyy-MM-dd') // Coloca data atual como coringa
-        }));
+      try {
+        if (authAcao === 'excluir') {
+          await base44.entities.BonusRecebimento.delete(authBonus.id);
+          toast.success('Bônus excluído com sucesso pelo Administrador.');
+        } 
+        
+        else if (authAcao === 'forcar_conclusao') {
+          // Converte itens esperados em itens conferidos
+          const itensConferidosForcados = (authBonus.itens_esperados || []).map(item => ({
+            id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+            ean: item.ean || 'SEM-EAN',
+            descricao: item.descricao,
+            qtd_caixas: item.qtd_esperada,
+            tipo_estoque: 'BOM',
+            norma_palete: 0,
+            paletes_cheios: 0,
+            caixas_soltas: item.qtd_esperada,
+            qtd_paletes: `${item.qtd_esperada} cx`,
+            endereco_id: null,
+            validade: format(new Date(), 'yyyy-MM-dd')
+          }));
 
-        const payload = {
-          status: 'conferido',
-          itens_conferidos: itensConferidosForcados,
-          data_conferencia: new Date().toISOString()
-        };
+          const payload = {
+            status: 'conferido',
+            itens_conferidos: itensConferidosForcados,
+            data_conferencia: new Date().toISOString()
+          };
 
-        await base44.entities.BonusRecebimento.update(bonus.id, payload);
-        toast.success(`Bônus #${bonus.numero_bonus} forçado como Conferido pelo Administrador!`);
+          await base44.entities.BonusRecebimento.update(authBonus.id, payload);
+          toast.success(`Bônus #${authBonus.numero_bonus} finalizado como Conferido pelo Admin!`);
+        }
+
+        // Atualiza as listas
+        queryClient.invalidateQueries({ queryKey: ['checagem-bonus'] });
+        queryClient.invalidateQueries({ queryKey: ['bonus-recebimento'] });
+
+      } catch (error) {
+        toast.error('Erro ao executar a ação no banco de dados.');
+      } finally {
+        setAuthBonus(null);
+        setAuthAcao(null);
       }
-
-      // Atualiza as listas na tela
-      queryClient.invalidateQueries({ queryKey: ['checagem-bonus'] });
-      queryClient.invalidateQueries({ queryKey: ['bonus-recebimento'] });
-      queryClient.invalidateQueries({ queryKey: ['notas-disponiveis-bonus'] });
-
-    } catch (error) {
-      toast.error('Erro ao executar a ação: ' + error.message);
-    } finally {
-      // Fecha o dialog no final
-      setAuthDialog({ open: false, bonus: null, acao: null });
+    } else {
+      toast.error('Acesso negado: Login ou senha inválidos.');
     }
+  }
+
+  // Fecha o modal limpando os dados de segurança
+  function handleCancelAuth() {
+    setAuthOpen(false);
+    setAuthLogin('');
+    setAuthSenha('');
+    setAuthAcao(null);
+    setAuthBonus(null);
   }
 
   const filtered = useMemo(() => {
@@ -208,7 +241,7 @@ export default function CheckagemRecebimento() {
                 <CardContent className="p-0">
                   <div className="flex flex-col sm:flex-row items-stretch">
                     
-                    {/* Status Barra Lateral (Visível em Desktop) */}
+                    {/* Status Barra Lateral */}
                     <div className={`hidden sm:block w-2 ${statusObj.className.split(' ')[0]}`} />
 
                     <div className="flex-1 p-5 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
@@ -251,7 +284,7 @@ export default function CheckagemRecebimento() {
 
                       {/* Ações */}
                       <div className="md:col-span-4 flex items-center justify-end gap-2 mt-4 md:mt-0">
-                        {/* Botão para forçar finalização - Aparece se não estiver concluído */}
+                        {/* Botão Finalizar Conferência (Para itens não conferidos) */}
                         {bonus.status !== 'conferido' && (
                           <Button
                             variant="outline"
@@ -297,17 +330,57 @@ export default function CheckagemRecebimento() {
         </div>
       )}
 
-      {/* Reutiliza o componente de Dialog para Autenticação do Admin */}
-      <AdminAuthDialog 
-        open={authDialog.open}
-        onOpenChange={(isOpen) => !isOpen && setAuthDialog({ open: false, bonus: null, acao: null })}
-        onSuccess={handleAdminAuthSuccess}
-        title={authDialog.acao === 'excluir' ? 'Excluir Bônus' : 'Forçar Conclusão do Bônus'}
-        description={authDialog.acao === 'excluir' 
-          ? `Confirme suas credenciais para excluir permanentemente o Bônus #${authDialog.bonus?.numero_bonus}.`
-          : `Atenção: Ao confirmar, o sistema irá declarar que o Bônus #${authDialog.bonus?.numero_bonus} foi 100% conferido (sem avarias) ignorando o coletor da doca.`
-        }
-      />
+      {/* Modal Inline de Autenticação do Administrador */}
+      <AlertDialog open={authOpen} onOpenChange={setAuthOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {authAcao === 'excluir' ? 'Autorizar Exclusão' : 'Forçar Conclusão de Bônus'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {authAcao === 'excluir'
+                ? `Por favor, insira credenciais de administrador para excluir permanentemente o bônus #${authBonus?.numero_bonus}.`
+                : `Atenção: Ao confirmar com senha admin, o bônus #${authBonus?.numero_bonus} será dado como 100% conferido (sem avarias).`
+              }
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Input
+                placeholder="Login de Administrador"
+                value={authLogin}
+                onChange={(e) => setAuthLogin(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-2">
+              <Input
+                type="password"
+                placeholder="Senha"
+                value={authSenha}
+                onChange={(e) => setAuthSenha(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleConfirmAuth(e);
+                }}
+              />
+            </div>
+          </div>
+          
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelAuth}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleConfirmAuth}
+              className={authAcao === 'excluir' ? 'bg-destructive text-white' : 'bg-emerald-600 text-white'}
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </div>
   );
 }
