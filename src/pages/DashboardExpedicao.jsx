@@ -32,7 +32,7 @@ export default function DashboardExpedicao() {
   const [authOpen, setAuthOpen] = useState(false);
   const [expedicaoSelecionada, setExpedicaoSelecionada] = useState(null);
 
-  // ─── BUSCA: CONFIGURAÇÕES DA PREMIAÇÃO E PESO ─────────────────────────
+  // ─── BUSCA: CONFIGURAÇÕES DA PREMIAÇÃO E META ─────────────────────────
   const { data: config = null } = useQuery({
     queryKey: ['configuracoes-metas'],
     queryFn: async () => {
@@ -95,7 +95,7 @@ export default function DashboardExpedicao() {
     // Pega APENAS o que passou no filtro da tela e está com status 'conferido'
     const conferidosFiltrados = filtradas.filter(exp => exp.status === 'conferido');
 
-    // Soma as caixas dessa lista filtrada com segurança contra Arrays vazios/nulos
+    // Soma as caixas para calcular o peso total
     let volumesTotal = 0;
     conferidosFiltrados.forEach(exp => {
       let itens = [];
@@ -110,14 +110,25 @@ export default function DashboardExpedicao() {
       volumesTotal += itens.reduce((acc, i) => acc + (Number(i.qtd_caixas || i.qtd_esperada) || 0), 0);
     });
 
-    // Pega as configurações para multiplicar (com fallbacks de segurança)
-    const valorPorVolume = Number(config?.valor_premiacao || config?.valor_caixa) || 0.15;
-    const pesoPorVolume = Number(config?.peso_medio || config?.peso_caixa) || 12.5;
+    // Pega as configurações baseadas na sua imagem de "Parâmetros de Premiação"
+    const valorPorKg = Number(config?.valor_por_kg) || 0.01;
+    const metaBonus = Number(config?.meta_bonus_dia || config?.meta_bonus_diario) || 8;
+    const pesoPorCaixa = Number(config?.peso_medio || config?.peso_caixa) || 12.5;
+
+    // Novos Cálculos
+    const qtdBonus = conferidosFiltrados.length;
+    const pesoTotal = volumesTotal * pesoPorCaixa;
+    const premiacaoTotal = pesoTotal * valorPorKg;
+    
+    // Progresso da Meta de Bônus (0 a 100%)
+    const progresso = Math.min(Math.round((qtdBonus / metaBonus) * 100), 100) || 0;
 
     return {
-      qtdBonus: conferidosFiltrados.length,
-      peso: volumesTotal * pesoPorVolume,
-      premiacao: volumesTotal * valorPorVolume,
+      qtdBonus,
+      metaBonus,
+      progresso,
+      peso: pesoTotal,
+      premiacao: premiacaoTotal,
     };
   }, [filtradas, config]);
 
@@ -195,43 +206,53 @@ export default function DashboardExpedicao() {
       {/* ─── PAINEL DE INDICADORES (KPIs FILTRADOS) ──────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         
-        {/* Card 1: Bônus Conferidos */}
+        {/* Card 1: Bônus Conferidos / Meta */}
         <Card className="border-border bg-gradient-to-br from-background to-muted/20">
-          <CardContent className="p-4 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 shrink-0">
-              <CheckSquare className="w-6 h-6" />
-            </div>
-            <div className="overflow-hidden">
-              <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider truncate">Bônus Conferidos</p>
-              <div className="flex items-baseline gap-2">
-                <p className="text-2xl font-bold tabular-nums">{kpis.qtdBonus}</p>
-                <p className="text-xs text-muted-foreground font-medium">bônus</p>
+          <CardContent className="p-4 flex flex-col justify-center h-full">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground font-medium uppercase tracking-wider">
+                <CheckSquare className="w-4 h-4 text-blue-500" /> Bônus / Meta
               </div>
+              <span className="font-bold text-sm text-blue-600">{kpis.progresso}%</span>
             </div>
+            <div className="w-full bg-muted rounded-full h-2.5 mb-2 overflow-hidden border border-border/50">
+              <div 
+                className={`h-2.5 rounded-full transition-all duration-500 ${kpis.progresso >= 100 ? 'bg-emerald-500' : 'bg-blue-500'}`} 
+                style={{ width: `${kpis.progresso}%` }}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground text-right">
+              <span className="font-bold text-foreground text-xl">{kpis.qtdBonus}</span> de {kpis.metaBonus} bônus
+            </p>
           </CardContent>
         </Card>
 
         {/* Card 2: Peso Total */}
         <Card className="border-border bg-gradient-to-br from-background to-muted/20">
-          <CardContent className="p-4 flex items-center gap-4">
+          <CardContent className="p-4 flex items-center gap-4 h-full">
             <div className="w-12 h-12 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
               <Scale className="w-6 h-6" />
             </div>
             <div className="overflow-hidden">
-              <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider truncate">Peso Movimentado</p>
-              <p className="text-2xl font-bold tabular-nums">{kpis.peso.toLocaleString('pt-BR')} <span className="text-sm font-normal text-muted-foreground">kg</span></p>
+              <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider truncate">Peso Total</p>
+              <div className="flex items-baseline gap-1">
+                <p className="text-2xl font-bold tabular-nums">
+                  {kpis.peso.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
+                </p>
+                <p className="text-sm text-muted-foreground font-medium">kg</p>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Card 3: Premiação */}
         <Card className="border-border bg-gradient-to-br from-background to-muted/20">
-          <CardContent className="p-4 flex items-center gap-4">
+          <CardContent className="p-4 flex items-center gap-4 h-full">
             <div className="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 shrink-0">
               <Trophy className="w-6 h-6" />
             </div>
             <div className="overflow-hidden">
-              <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider truncate">Premiação</p>
+              <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider truncate">Valor da Premiação</p>
               <p className="text-2xl font-bold tabular-nums text-emerald-600">
                 {Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(kpis.premiacao)}
               </p>
@@ -288,7 +309,6 @@ export default function DashboardExpedicao() {
             const arrayVolumes = Array.isArray(exp.itens_esperados) ? exp.itens_esperados : [];
             const totalVolumes = arrayVolumes.reduce((acc, i) => acc + (Number(i.qtd_esperada) || 0), 0);
             
-            // Corrige o bug da tela branca forçando a extração do ID para string antes do slice
             const identificador = exp.numero_bonus || (exp.id ? String(exp.id).slice(0,6).toUpperCase() : 'N/A');
 
             return (
