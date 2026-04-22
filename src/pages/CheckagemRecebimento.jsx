@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Search, ChevronRight, AlertTriangle, CheckCircle2,
-  Clock, Package, Calendar, FileText, Eye, Trash2,
+  Clock, Package, Calendar, FileText, Eye, Trash2, CheckSquare
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -43,7 +43,9 @@ export default function CheckagemRecebimento() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
   const [bonusSelecionado, setBonusSelecionado] = useState(null);
-  const [authDialog, setAuthDialog] = useState({ open: false, bonusId: null });
+  
+  // Controle do fluxo de Autenticação Admin
+  const [authDialog, setAuthDialog] = useState({ open: false, bonus: null, acao: null });
   const queryClient = useQueryClient();
 
   const { data: bonusList = [], isLoading } = useQuery({
@@ -51,36 +53,79 @@ export default function CheckagemRecebimento() {
     queryFn: () => base44.entities.BonusRecebimento.list('-created_date', 500),
   });
 
-  async function handleDeleteBonus(id) {
-    await base44.entities.BonusRecebimento.delete(id);
-    queryClient.invalidateQueries({ queryKey: ['checagem-bonus'] });
-    queryClient.invalidateQueries({ queryKey: ['bonus-recebimento'] });
-    queryClient.invalidateQueries({ queryKey: ['notas-disponiveis-bonus'] });
-    toast.success('Bônus excluído com sucesso.');
+  // Função para abrir o Auth Dialog pedindo a Exclusão
+  function handleRequestDelete(bonus) {
+    setAuthDialog({ open: true, bonus, acao: 'excluir' });
+  }
+
+  // Função para abrir o Auth Dialog pedindo a Finalização Forçada
+  function handleRequestForceComplete(bonus) {
+    setAuthDialog({ open: true, bonus, acao: 'forcar_conclusao' });
+  }
+
+  // Função que o AdminAuthDialog irá chamar se a senha estiver correta
+  async function handleAdminAuthSuccess() {
+    const { bonus, acao } = authDialog;
+    
+    try {
+      if (acao === 'excluir') {
+        await base44.entities.BonusRecebimento.delete(bonus.id);
+        toast.success('Bônus excluído com sucesso pelo Administrador.');
+      } 
+      
+      else if (acao === 'forcar_conclusao') {
+        // Lógica para transformar itens_esperados em itens_conferidos
+        const itensConferidosForcados = (bonus.itens_esperados || []).map(item => ({
+          id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          ean: item.ean || 'SEM-EAN',
+          descricao: item.descricao,
+          qtd_caixas: item.qtd_esperada,
+          tipo_estoque: 'BOM',
+          norma_palete: 0,
+          paletes_cheios: 0,
+          caixas_soltas: item.qtd_esperada,
+          qtd_paletes: `${item.qtd_esperada} cx`,
+          endereco_id: null,
+          validade: format(new Date(), 'yyyy-MM-dd') // Coloca data atual como coringa
+        }));
+
+        const payload = {
+          status: 'conferido',
+          itens_conferidos: itensConferidosForcados,
+          data_conferencia: new Date().toISOString()
+        };
+
+        await base44.entities.BonusRecebimento.update(bonus.id, payload);
+        toast.success(`Bônus #${bonus.numero_bonus} forçado como Conferido pelo Administrador!`);
+      }
+
+      // Atualiza as listas na tela
+      queryClient.invalidateQueries({ queryKey: ['checagem-bonus'] });
+      queryClient.invalidateQueries({ queryKey: ['bonus-recebimento'] });
+      queryClient.invalidateQueries({ queryKey: ['notas-disponiveis-bonus'] });
+
+    } catch (error) {
+      toast.error('Erro ao executar a ação: ' + error.message);
+    } finally {
+      // Fecha o dialog no final
+      setAuthDialog({ open: false, bonus: null, acao: null });
+    }
   }
 
   const filtered = useMemo(() => {
     return bonusList.filter(b => {
-      const matchStatus = filterStatus === 'todos' || b.status === filterStatus;
-      const matchSearch = !search ||
-        b.numero_bonus?.toLowerCase().includes(search.toLowerCase()) ||
+      const matchSearch =
+        b.numero_bonus?.toString().includes(search) ||
         b.emitente_nome?.toLowerCase().includes(search.toLowerCase());
-      return matchStatus && matchSearch;
+      const matchStatus = filterStatus === 'todos' || b.status === filterStatus;
+      return matchSearch && matchStatus;
     });
   }, [bonusList, search, filterStatus]);
-
-  // Stats
-  const stats = useMemo(() => ({
-    total: bonusList.length,
-    conferido: bonusList.filter(b => b.status === 'conferido').length,
-    divergente: bonusList.filter(b => b.status === 'divergente').length,
-    em_andamento: bonusList.filter(b => ['em_conferencia', 'aguardando_2a_conferencia'].includes(b.status)).length,
-  }), [bonusList]);
 
   if (bonusSelecionado) {
     return (
       <BonusDetalhado
-        bonus={bonusSelecionado}
+        bonusId={bonusSelecionado.id}
         onVoltar={() => setBonusSelecionado(null)}
       />
     );
@@ -88,196 +133,180 @@ export default function CheckagemRecebimento() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Checagem de Recebimento</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Relatório completo de todos os bônus — itens conferidos, validades, avarias e divergências
+          Acompanhamento e auditoria dos bônus gerados.
         </p>
       </div>
 
-      {/* Stats */}
-      {!isLoading && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card className="border-border">
-            <CardContent className="py-3 px-4">
-              <p className="text-xs text-muted-foreground">Total de Bônus</p>
-              <p className="text-2xl font-bold tabular-nums mt-0.5">{stats.total}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-border">
-            <CardContent className="py-3 px-4">
-              <p className="text-xs text-muted-foreground">Conferidos</p>
-              <p className="text-2xl font-bold tabular-nums mt-0.5 text-emerald-600">{stats.conferido}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-border">
-            <CardContent className="py-3 px-4">
-              <p className="text-xs text-muted-foreground">Divergentes</p>
-              <p className="text-2xl font-bold tabular-nums mt-0.5 text-orange-600">{stats.divergente}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-border">
-            <CardContent className="py-3 px-4">
-              <p className="text-xs text-muted-foreground">Em Andamento</p>
-              <p className="text-2xl font-bold tabular-nums mt-0.5 text-blue-600">{stats.em_andamento}</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Filtros */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+        <div className="relative w-full sm:w-96">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
+            placeholder="Buscar por Nº Bônus ou Fornecedor..."
             className="pl-9"
-            placeholder="Buscar por número ou emitente..."
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {[
-            { key: 'todos', label: 'Todos' },
-            { key: 'conferido', label: 'Conferidos' },
-            { key: 'divergente', label: 'Divergentes' },
-            { key: 'aguardando_2a_conferencia', label: 'Ag. 2ª Conf.' },
-            { key: 'em_conferencia', label: 'Em Conferência' },
-          ].map(({ key, label }) => (
-            <Button
-              key={key}
-              variant={filterStatus === key ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilterStatus(key)}
-              className="text-xs h-9"
-            >
-              {label}
-            </Button>
-          ))}
+        <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-2 sm:pb-0">
+          <Button
+            variant={filterStatus === 'todos' ? 'default' : 'outline'}
+            onClick={() => setFilterStatus('todos')}
+            size="sm"
+            className="rounded-full"
+          >
+            Todos
+          </Button>
+          <Button
+            variant={filterStatus === 'em_conferencia' ? 'secondary' : 'outline'}
+            onClick={() => setFilterStatus('em_conferencia')}
+            size="sm"
+            className="rounded-full"
+          >
+            Pendentes
+          </Button>
+          <Button
+            variant={filterStatus === 'divergente' ? 'secondary' : 'outline'}
+            onClick={() => setFilterStatus('divergente')}
+            size="sm"
+            className="rounded-full text-orange-600 hover:text-orange-700"
+          >
+            Divergentes
+          </Button>
         </div>
       </div>
 
-      {/* Lista */}
       {isLoading ? (
         <div className="space-y-3">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-28 rounded-xl" />)}
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-28 rounded-xl" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <Card>
+        <Card className="border-dashed">
           <CardContent className="py-16 text-center">
             <Package className="w-12 h-12 text-muted-foreground/30 mx-auto mb-4" />
-            <p className="text-sm font-medium text-muted-foreground">Nenhum bônus encontrado.</p>
+            <p className="text-sm font-medium text-muted-foreground">
+              Nenhum bônus encontrado.
+            </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <div className="grid grid-cols-1 gap-3">
           {filtered.map(bonus => {
-            const cfg = STATUS_CONFIG[bonus.status] || STATUS_CONFIG.em_conferencia;
-            const Icon = cfg.icon;
-
-            const itensFinais = bonus.itens_conferidos_2?.length
-              ? bonus.itens_conferidos_2
-              : (bonus.itens_conferidos || []);
-
-            const totalCaixas = itensFinais.reduce((acc, i) => acc + (i.qtd_caixas || 0), 0);
-            const totalEsperado = (bonus.itens_esperados || []).reduce((acc, i) => acc + (i.qtd_esperada || 0), 0);
-            const temAvaria = itensFinais.some(i => i.tipo_estoque === 'AVARIA');
-            const totalAvarias = itensFinais.filter(i => i.tipo_estoque === 'AVARIA').reduce((acc, i) => acc + (i.qtd_caixas || 0), 0);
-            const dataFinal = bonus.data_conferencia_2 || bonus.data_conferencia;
+            const statusObj = STATUS_CONFIG[bonus.status] || {
+              label: bonus.status,
+              className: 'bg-muted text-muted-foreground',
+              icon: Clock
+            };
+            const StatusIcon = statusObj.icon;
+            
+            const totalEsperado = (bonus.itens_esperados || []).reduce((acc, i) => acc + i.qtd_esperada, 0);
 
             return (
-              <div key={bonus.id} className="relative group">
-                <Card
-                  className="border-border hover:border-primary/30 hover:shadow-md transition-all cursor-pointer"
-                  onClick={() => setBonusSelecionado(bonus)}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-primary/5 border border-primary/10 flex items-center justify-center shrink-0">
-                        <Icon className="w-5 h-5 text-primary" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-sm">Bônus #{bonus.numero_bonus}</span>
-                          <Badge className={`text-[10px] border ${cfg.className}`}>{cfg.label}</Badge>
-                          {temAvaria && (
-                            <Badge className="text-[10px] border bg-red-100 text-red-700 border-red-200 gap-1">
-                              <AlertTriangle className="w-2.5 h-2.5" />
-                              Avaria
-                            </Badge>
-                          )}
-                          {bonus.itens_conferidos_2?.length > 0 && (
-                            <Badge className="text-[10px] border bg-emerald-50 text-emerald-700 border-emerald-200">
-                              Dupla conf.
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                          {bonus.emitente_nome || 'Emitente não informado'}
-                        </p>
-                        <div className="flex items-center gap-3 mt-1.5 flex-wrap text-[11px] text-muted-foreground">
-                          {totalCaixas > 0 && (
-                            <span><span className="font-semibold text-foreground">{totalCaixas.toLocaleString('pt-BR')}</span> cx conferidas</span>
-                          )}
-                          {totalEsperado > 0 && (
-                            <span>Esperado: <span className="font-semibold text-foreground">{totalEsperado.toLocaleString('pt-BR')}</span> cx</span>
-                          )}
-                          {totalAvarias > 0 && (
-                            <span className="text-red-600 font-medium">{totalAvarias.toLocaleString('pt-BR')} cx avariadas</span>
-                          )}
-                          {bonus.notas_fiscais_ids?.length > 0 && (
-                            <span className="flex items-center gap-1">
-                              <FileText className="w-3 h-3" />
-                              {bonus.notas_fiscais_ids.length} NF(s)
-                            </span>
-                          )}
-                          {dataFinal && (
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {format(new Date(dataFinal), "dd/MM/yy 'às' HH:mm", { locale: ptBR })}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0">
-                        <Button variant="ghost" size="sm" className="gap-1.5 text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Eye className="w-3.5 h-3.5" />
-                          Ver detalhes
-                        </Button>
-                        <ChevronRight className="w-4 h-4 text-muted-foreground/50 group-hover:text-primary transition-colors" />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+              <Card key={bonus.id} className="group overflow-hidden hover:shadow-md transition-all border-border">
+                <CardContent className="p-0">
+                  <div className="flex flex-col sm:flex-row items-stretch">
+                    
+                    {/* Status Barra Lateral (Visível em Desktop) */}
+                    <div className={`hidden sm:block w-2 ${statusObj.className.split(' ')[0]}`} />
 
-                {/* Botão excluir (admin) */}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute top-3 right-10 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive hover:bg-destructive/10 z-10"
-                  onClick={(e) => { e.stopPropagation(); setAuthDialog({ open: true, bonusId: bonus.id }); }}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
+                    <div className="flex-1 p-5 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                      
+                      {/* Info Principal */}
+                      <div className="md:col-span-5 space-y-2">
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-bold text-lg">
+                            #{bonus.numero_bonus}
+                          </span>
+                          <Badge variant="outline" className={`${statusObj.className} border flex gap-1.5 py-0.5`}>
+                            <StatusIcon className="w-3.5 h-3.5" />
+                            {statusObj.label}
+                          </Badge>
+                        </div>
+                        <p className="text-sm font-medium leading-none truncate" title={bonus.emitente_nome}>
+                          {bonus.emitente_nome}
+                        </p>
+                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5" />
+                            {format(new Date(bonus.created_date), "dd/MM 'às' HH:mm", { locale: ptBR })}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <FileText className="w-3.5 h-3.5" />
+                            {bonus.notas_fiscais_ids?.length || 0} NFs
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Progresso / Qtd */}
+                      <div className="md:col-span-3">
+                        <p className="text-xs text-muted-foreground mb-1 font-medium uppercase tracking-wider">
+                          Volume Esperado
+                        </p>
+                        <p className="text-xl font-semibold tabular-nums text-foreground">
+                          {totalEsperado.toLocaleString('pt-BR')} <span className="text-sm font-normal text-muted-foreground">cx</span>
+                        </p>
+                      </div>
+
+                      {/* Ações */}
+                      <div className="md:col-span-4 flex items-center justify-end gap-2 mt-4 md:mt-0">
+                        {/* Botão para forçar finalização - Aparece se não estiver concluído */}
+                        {bonus.status !== 'conferido' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border-emerald-200 gap-1.5"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRequestForceComplete(bonus);
+                            }}
+                          >
+                            <CheckSquare className="w-4 h-4" />
+                            Finalizar Conferência
+                          </Button>
+                        )}
+                        
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRequestDelete(bonus);
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+
+                        <Button 
+                          className="gap-2 shrink-0 ml-2" 
+                          onClick={() => setBonusSelecionado(bonus)}
+                        >
+                          <Eye className="w-4 h-4" />
+                          Auditar
+                        </Button>
+                      </div>
+
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             );
           })}
         </div>
       )}
 
-      {!isLoading && filtered.length > 0 && (
-        <p className="text-xs text-muted-foreground text-center pb-4">
-          {filtered.length} bônus exibido(s) de {bonusList.length} total
-        </p>
-      )}
-
-      <AdminAuthDialog
+      {/* Reutiliza o componente de Dialog para Autenticação do Admin */}
+      <AdminAuthDialog 
         open={authDialog.open}
-        onOpenChange={(o) => setAuthDialog({ open: o, bonusId: null })}
-        title="Excluir Bônus"
-        description="Esta ação é irreversível. Confirme suas credenciais de administrador para excluir o bônus."
-        onAuthorized={() => handleDeleteBonus(authDialog.bonusId)}
+        onOpenChange={(isOpen) => !isOpen && setAuthDialog({ open: false, bonus: null, acao: null })}
+        onSuccess={handleAdminAuthSuccess}
+        title={authDialog.acao === 'excluir' ? 'Excluir Bônus' : 'Forçar Conclusão do Bônus'}
+        description={authDialog.acao === 'excluir' 
+          ? `Confirme suas credenciais para excluir permanentemente o Bônus #${authDialog.bonus?.numero_bonus}.`
+          : `Atenção: Ao confirmar, o sistema irá declarar que o Bônus #${authDialog.bonus?.numero_bonus} foi 100% conferido (sem avarias) ignorando o coletor da doca.`
+        }
       />
     </div>
   );
