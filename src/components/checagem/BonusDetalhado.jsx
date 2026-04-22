@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   ArrowLeft, AlertTriangle, CheckCircle2, Clock,
   FileText, Calendar, ShieldCheck, List, FileDown, Trash2,
-  Copy,
+  Copy, CheckSquare, // <-- CheckSquare adicionado
 } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -498,6 +498,10 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
   const [confirmReplicacaoOpen, setConfirmReplicacaoOpen] = useState(false);
   const [authReplicacaoOpen, setAuthReplicacaoOpen] = useState(false);
   const [replicando, setReplicando] = useState(false);
+  
+  // ─── NOVO: Estado para Forçar Conclusão ──────────────────────────────────
+  const [authForceCompleteOpen, setAuthForceCompleteOpen] = useState(false);
+
   const [notasVinculadas, setNotasVinculadas] = useState([]);
 
   // Filtros do PDF
@@ -541,6 +545,35 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
     }
   };
 
+  // ─── NOVO: Função para Forçar Conclusão (Admin) ──────────────────────────
+  const handleForcarConclusao = async () => {
+    try {
+      const itensForcados = (bonus.itens_esperados || []).map(item => ({
+        id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        ean: item.ean || 'SEM-EAN',
+        descricao: item.descricao,
+        qtd_caixas: item.qtd_esperada,
+        tipo_estoque: 'BOM',
+        norma_palete: 0,
+        paletes_cheios: 0,
+        caixas_soltas: item.qtd_esperada,
+        qtd_paletes: `${item.qtd_esperada} cx`,
+        endereco_id: null,
+        validade: format(new Date(), 'yyyy-MM-dd')
+      }));
+
+      await base44.entities.BonusRecebimento.update(bonus.id, {
+        status: 'conferido',
+        itens_conferidos: itensForcados,
+        data_conferencia: new Date().toISOString()
+      });
+      toast.success('Bônus forçado como Conferido com sucesso!');
+      onVoltar(); // Volta para a tela anterior para forçar o recarregamento
+    } catch (err) {
+      toast.error('Erro ao forçar conclusão: ' + err.message);
+    }
+  };
+
   const handleExportarPDF = () => {
     gerarPDF(
       bonus,
@@ -570,6 +603,20 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
           <p className="text-sm text-muted-foreground mt-0.5">{bonus.emitente_nome || '—'}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          
+          {/* ─── NOVO: Botão Forçar Conclusão ────────────────────────────── */}
+          {bonus.status !== 'conferido' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAuthForceCompleteOpen(true)}
+              className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-800"
+            >
+              <CheckSquare className="w-4 h-4" />
+              Forçar Conclusão
+            </Button>
+          )}
+
           {itens1.length > 0 && (
             <Button
               variant="outline"
@@ -587,7 +634,7 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
         </div>
       </div>
 
-      {/* Dialog de confirmação de risco */}
+      {/* Dialog de confirmação de risco (Replicação) */}
       <AlertDialog open={confirmReplicacaoOpen} onOpenChange={setConfirmReplicacaoOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -621,6 +668,16 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
         onAuthorized={handleReplicar}
       />
 
+      {/* ─── NOVO: Dialog de credenciais admin para Forçar Conclusão ──────── */}
+      <AdminAuthDialog
+        open={authForceCompleteOpen}
+        onOpenChange={setAuthForceCompleteOpen}
+        title="Forçar Conclusão"
+        description="Esta ação marcará o bônus como 100% conferido. Confirme suas credenciais de administrador."
+        onAuthorized={handleForcarConclusao}
+      />
+
+      {/* Dialog para Exclusão */}
       <AdminAuthDialog
         open={authDeleteOpen}
         onOpenChange={setAuthDeleteOpen}
