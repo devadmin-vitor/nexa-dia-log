@@ -17,17 +17,23 @@ import AdminAuthDialog from '@/components/admin/AdminAuthDialog';
 export default function DashboardExpedicao() {
   const queryClient = useQueryClient();
 
-  // ─── ESTADOS DOS FILTROS ─────────────────────────────────────────────
-  const [buscaFornecedor, setBuscaFornecedor] = useState('');
-  const [dataInicial, setDataInicial] = useState('');
-  const [dataFinal, setDataFinal] = useState('');
+  // ─── ESTADOS DOS CAMPOS DE INPUT ──────────────────────────────────────
+  const [inputFornecedor, setInputFornecedor] = useState('');
+  const [inputDataInicial, setInputDataInicial] = useState('');
+  const [inputDataFinal, setInputDataFinal] = useState('');
+
+  // ─── ESTADOS DOS FILTROS APLICADOS (Acionados pelo botão Pesquisar) ──
+  const [filtrosAtivos, setFiltrosAtivos] = useState({
+    busca: '',
+    dataInicial: '',
+    dataFinal: '',
+  });
 
   // ─── ESTADOS DE AUTENTICAÇÃO (EXCLUSÃO) ──────────────────────────────
   const [authOpen, setAuthOpen] = useState(false);
   const [expedicaoSelecionada, setExpedicaoSelecionada] = useState(null);
 
   // ─── BUSCA DE DADOS NO BANCO ─────────────────────────────────────────
-  // Substitua 'Expedicao' pelo nome exato da sua entidade no base44, se for diferente
   const { data: expedicoes = [], isLoading } = useQuery({
     queryKey: ['lista-expedicoes'],
     queryFn: () => base44.entities.Expedicao.list('-created_date', 500),
@@ -36,25 +42,66 @@ export default function DashboardExpedicao() {
   // ─── LÓGICA DOS FILTROS ──────────────────────────────────────────────
   const filtradas = useMemo(() => {
     return expedicoes.filter((exp) => {
-      // Filtro por Fornecedor/Cliente/Destino (ajuste o campo conforme seu banco)
-      const termo = buscaFornecedor.toLowerCase();
-      const nomeDestino = String(exp.destino_nome || exp.fornecedor_nome || '').toLowerCase();
-      const matchFornecedor = !buscaFornecedor || nomeDestino.includes(termo);
+      // Filtro por Fornecedor/Cliente/Destino
+      const termo = filtrosAtivos.busca.toLowerCase();
+      // Garantimos que a leitura dos campos é segura (fallback para string vazia)
+      const nomeDestino = String(exp.destino_nome || exp.fornecedor_nome || exp.emitente_nome || '').toLowerCase();
+      const matchFornecedor = !filtrosAtivos.busca || nomeDestino.includes(termo);
 
-      // Filtro por Data
-      const expData = new Date(exp.created_date);
-      const matchDataInicial = !dataInicial || expData >= new Date(dataInicial + 'T00:00:00');
-      const matchDataFinal = !dataFinal || expData <= new Date(dataFinal + 'T23:59:59');
+      // Filtro por Data (Lida com diferentes formatos de data que podem vir do banco)
+      let matchDataInicial = true;
+      let matchDataFinal = true;
+
+      // Usamos a data de criação ou qualquer campo de data disponível
+      const dataString = exp.created_date || exp.data_criacao || exp.data;
+
+      if (dataString) {
+        const expData = new Date(dataString);
+        
+        if (filtrosAtivos.dataInicial) {
+           const dtInicial = new Date(filtrosAtivos.dataInicial + 'T00:00:00');
+           matchDataInicial = expData >= dtInicial;
+        }
+        
+        if (filtrosAtivos.dataFinal) {
+           const dtFinal = new Date(filtrosAtivos.dataFinal + 'T23:59:59');
+           matchDataFinal = expData <= dtFinal;
+        }
+      } else if (filtrosAtivos.dataInicial || filtrosAtivos.dataFinal) {
+        // Se o registro não tem data, mas o usuário filtrou por data, ele é excluído
+        return false;
+      }
 
       return matchFornecedor && matchDataInicial && matchDataFinal;
     });
-  }, [expedicoes, buscaFornecedor, dataInicial, dataFinal]);
+  }, [expedicoes, filtrosAtivos]);
+
+  // Aplicar Filtros (Botão Pesquisar)
+  const handlePesquisar = () => {
+    setFiltrosAtivos({
+      busca: inputFornecedor,
+      dataInicial: inputDataInicial,
+      dataFinal: inputDataFinal,
+    });
+  };
 
   // Limpar Filtros
   const limparFiltros = () => {
-    setBuscaFornecedor('');
-    setDataInicial('');
-    setDataFinal('');
+    setInputFornecedor('');
+    setInputDataInicial('');
+    setInputDataFinal('');
+    setFiltrosAtivos({
+      busca: '',
+      dataInicial: '',
+      dataFinal: '',
+    });
+  };
+
+  // Tratar Enter nos inputs
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      handlePesquisar();
+    }
   };
 
   // ─── LÓGICA DE EXCLUSÃO ──────────────────────────────────────────────
@@ -73,6 +120,21 @@ export default function DashboardExpedicao() {
     } finally {
       setAuthOpen(false);
       setExpedicaoSelecionada(null);
+    }
+  };
+
+  // Helper para formatar a data de forma segura
+  const formatarDataSegura = (dataString) => {
+    if (!dataString) return 'Data Indisponível';
+    try {
+      return format(parseISO(dataString), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR });
+    } catch (e) {
+       // Fallback caso a data não seja ISO
+       try {
+         return format(new Date(dataString), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR });
+       } catch (e2) {
+         return dataString;
+       }
     }
   };
 
@@ -103,8 +165,9 @@ export default function DashboardExpedicao() {
                 <Input
                   placeholder="Digite o nome..."
                   className="pl-9 bg-background"
-                  value={buscaFornecedor}
-                  onChange={(e) => setBuscaFornecedor(e.target.value)}
+                  value={inputFornecedor}
+                  onChange={(e) => setInputFornecedor(e.target.value)}
+                  onKeyDown={handleKeyDown}
                 />
               </div>
             </div>
@@ -118,8 +181,9 @@ export default function DashboardExpedicao() {
                 <Input
                   type="date"
                   className="pl-9 bg-background"
-                  value={dataInicial}
-                  onChange={(e) => setDataInicial(e.target.value)}
+                  value={inputDataInicial}
+                  onChange={(e) => setInputDataInicial(e.target.value)}
+                  onKeyDown={handleKeyDown}
                 />
               </div>
             </div>
@@ -133,20 +197,31 @@ export default function DashboardExpedicao() {
                 <Input
                   type="date"
                   className="pl-9 bg-background"
-                  value={dataFinal}
-                  onChange={(e) => setDataFinal(e.target.value)}
+                  value={inputDataFinal}
+                  onChange={(e) => setInputDataFinal(e.target.value)}
+                  onKeyDown={handleKeyDown}
                 />
               </div>
             </div>
 
-            <Button 
-              variant="outline" 
-              className="w-full md:w-auto text-muted-foreground hover:text-foreground gap-2 shrink-0"
-              onClick={limparFiltros}
-            >
-              <FilterX className="w-4 h-4" />
-              Limpar
-            </Button>
+            <div className="flex gap-2 w-full md:w-auto">
+              <Button 
+                onClick={handlePesquisar}
+                className="w-full md:w-auto gap-2 shrink-0 bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                <Search className="w-4 h-4" />
+                Pesquisar
+              </Button>
+
+              <Button 
+                variant="outline" 
+                className="w-full md:w-auto text-muted-foreground hover:text-foreground gap-2 shrink-0"
+                onClick={limparFiltros}
+              >
+                <FilterX className="w-4 h-4" />
+                Limpar
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -182,11 +257,11 @@ export default function DashboardExpedicao() {
                     </Badge>
                   </div>
                   <p className="text-sm font-medium">
-                    Destino: <span className="text-muted-foreground">{exp.destino_nome || exp.fornecedor_nome || 'N/A'}</span>
+                    Destino: <span className="text-muted-foreground">{exp.destino_nome || exp.fornecedor_nome || exp.emitente_nome || 'N/A'}</span>
                   </p>
                   <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                     <Calendar className="w-3.5 h-3.5" />
-                    {format(parseISO(exp.created_date), "dd 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
+                    {formatarDataSegura(exp.created_date || exp.data_criacao || exp.data)}
                   </p>
                 </div>
 
