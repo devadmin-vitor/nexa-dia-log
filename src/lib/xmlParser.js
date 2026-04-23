@@ -12,7 +12,7 @@ export function parseNFeXML(xmlString) {
 
   // Helper to get text content of a tag (handles namespaces)
   const getText = (parent, ...tags) => {
-    if (!parent) return ''; // Trava de segurança essencial
+    if (!parent) return '';
     for (const tag of tags) {
       const el = parent.querySelector(tag) || parent.getElementsByTagName(tag)[0];
       if (el) return el.textContent?.trim() || '';
@@ -26,10 +26,6 @@ export function parseNFeXML(xmlString) {
   const ide = infNFe.querySelector('ide') || infNFe.getElementsByTagName('ide')[0];
   const emit = infNFe.querySelector('emit') || infNFe.getElementsByTagName('emit')[0];
   const dest = infNFe.querySelector('dest') || infNFe.getElementsByTagName('dest')[0];
-  
-  // Captura especificamente o bloco de endereço do destinatário
-  const enderDest = dest ? (dest.querySelector('enderDest') || dest.getElementsByTagName('enderDest')[0]) : null;
-  
   const total = infNFe.querySelector('total') || infNFe.getElementsByTagName('total')[0];
 
   const numeroNF = getText(ide, 'nNF');
@@ -76,6 +72,23 @@ export function parseNFeXML(xmlString) {
     });
   }
 
+  // 👇 NOVA SOLUÇÃO INFALÍVEL PARA xMun e xBairro 👇
+  // Ignora o DOMParser e extrai direto do texto bruto usando Regex
+  // Pega o valor entre as tags, lidando com namespaces (ex: <ns:xMun>Valor</ns:xMun> ou <xMun>Valor</xMun>)
+  
+  let municipio = '';
+  const munMatch = xmlString.match(/<(?:[\w-]+:)?xMun>(.*?)<\/(?:[\w-]+:)?xMun>/i);
+  if (munMatch && munMatch[1]) {
+    municipio = munMatch[1].trim();
+  }
+
+  let bairro = '';
+  const bairroMatch = xmlString.match(/<(?:[\w-]+:)?xBairro>(.*?)<\/(?:[\w-]+:)?xBairro>/i);
+  if (bairroMatch && bairroMatch[1]) {
+    bairro = bairroMatch[1].trim();
+  }
+  // 👆 FIM DA NOVA SOLUÇÃO 👆
+
   return {
     numero_nf: numeroNF,
     serie: getText(ide, 'serie'),
@@ -86,10 +99,9 @@ export function parseNFeXML(xmlString) {
     destinatario_nome: getText(dest, 'xNome'),
     destinatario_cnpj: getText(dest, 'CNPJ') || getText(dest, 'CPF'),
     
-    // 👇 Busca focada no enderDest 👇
-    municipio: getText(enderDest, 'xMun'),
-    bairro: getText(enderDest, 'xBairro'),
-    // 👆 Busca focada no enderDest 👆
+    // Os valores extraídos com Regex:
+    municipio: municipio,
+    bairro: bairro,
 
     valor_total: parseFloat(getText(total, 'vNF') || '0'),
     peso_bruto: pesoBruto,
