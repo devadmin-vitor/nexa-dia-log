@@ -232,7 +232,7 @@ function DivergenciasSection({ bonus }) {
   );
 }
 
-// ─── MAPA DE SEPARAÇÃO (Contínuo na mesma página + xMun e xBairro) ────────────
+// ─── MAPA DE SEPARAÇÃO (Somente xMun e xBairro mapeados direto do XML) ────────
 function gerarMapaSeparacao(bonus, notasVinculadas) {
   if (!notasVinculadas || notasVinculadas.length === 0) {
     toast.error("Nenhuma Nota Fiscal vinculada a este bônus para gerar o mapa.");
@@ -245,7 +245,7 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
   const margin = 14;
   const maxY = H - 20;
 
-  // Agrupar Notas Fiscais por Cliente com decodificação limpa
+  // Agrupar Notas Fiscais por Cliente
   const gruposClientes = {};
   notasVinculadas.forEach(nf => {
     const bruto = nf.destinatario_nome || nf.razao_social_destinatario || nf.razao_social || nf.cliente_nome || 'Cliente Não Identificado';
@@ -258,7 +258,6 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
 
   let y = margin;
 
-  // Função para desenhar o topo azul
   const printMainHeader = () => {
     doc.setFillColor(30, 64, 175); 
     doc.rect(0, 0, W, 22, 'F');
@@ -281,59 +280,60 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
     if (y + need > maxY) newPage();
   };
 
-  // Imprime o cabeçalho na primeira página
   printMainHeader();
 
-  // Iterar sobre cada Cliente (Continua na mesma folha o máximo possível)
   Object.keys(gruposClientes).forEach((cliente, index) => {
-    
-    // Garante que tem espaço para pelo menos o nome do cliente e o cabeçalho da primeira NF
     checkY(35);
 
-    // Linha divisória suave entre clientes (exceto pro primeiro cliente ou logo após o header)
     if (index > 0 && y > 35) {
       doc.setDrawColor(210, 215, 220);
       doc.line(margin, y - 4, W - margin, y - 4);
-      y += 2; // Espaçamento extra após a linha
+      y += 2;
     }
 
-    // Destaque do Cliente Atual
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
     doc.text(`Cliente:`, margin, y);
-    doc.setTextColor(30, 64, 175); // Azul
+    doc.setTextColor(30, 64, 175);
     
-    // Alinha o nome do cliente na frente da palavra "Cliente:"
     const splitNome = doc.splitTextToSize(cliente, W - margin * 2 - 18);
     doc.text(splitNome, margin + 16, y);
     y += Math.max(8, splitNome.length * 5);
 
     let totalCaixasCliente = 0;
-
-    // Iterar sobre as NFs deste Cliente
     const nfsDoCliente = gruposClientes[cliente];
     
     nfsDoCliente.forEach(nf => {
       checkY(25);
       
       const numeroNF = nf.numero_nf || nf.nf || 'S/N';
-      const rota = decodeHTML(nf.rota || nf.rota_descricao || 'Rota Não Definida');
-      
-      // Ajuste: buscando especificamente pelas tags xMun e xBairro informadas
-      const cidade = decodeHTML(nf.xMun || nf.cidade_destinatario || nf.municipio_destinatario || nf.cidade || nf.municipio || 'N/I');
-      const bairro = decodeHTML(nf.xBairro || nf.bairro_destinatario || nf.bairro || 'N/I');
-      
       const produtosNF = nf.itens || [];
 
-      // Cabeçalho da NF, Rota, Cidade e Bairro
+      // Extrator Robusto para xMun e xBairro do XML SEFAZ
+      let munVal = nf.xMun || nf.destinatario?.xMun || nf.dest?.enderDest?.xMun || nf.infNFe?.dest?.enderDest?.xMun;
+      let bairroVal = nf.xBairro || nf.destinatario?.xBairro || nf.dest?.enderDest?.xBairro || nf.infNFe?.dest?.enderDest?.xBairro;
+
+      // Fallback: Busca via Regex em todo o objeto stringificado, caso o XML tenha vindo compactado como string do backend
+      const nfString = JSON.stringify(nf);
+      if (!munVal && /<xMun>(.*?)<\/xMun>/.test(nfString)) {
+        munVal = nfString.match(/<xMun>(.*?)<\/xMun>/)[1];
+      }
+      if (!bairroVal && /<xBairro>(.*?)<\/xBairro>/.test(nfString)) {
+        bairroVal = nfString.match(/<xBairro>(.*?)<\/xBairro>/)[1];
+      }
+
+      const municipio = decodeHTML(munVal || 'N/I');
+      const bairro = decodeHTML(bairroVal || 'N/I');
+
+      // Cabeçalho da NF com Município e Bairro (Rota removida)
       doc.setFillColor(240, 244, 248);
       doc.roundedRect(margin, y, W - margin * 2, 9, 2, 2, 'F');
       
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(30, 58, 138); 
-      doc.text(`NF: ${numeroNF}   |   Rota: ${rota}   |   Cidade: ${cidade}   |   Bairro: ${bairro}`, margin + 4, y + 6);
+      doc.text(`NF: ${numeroNF}   |   Município: ${municipio}   |   Bairro: ${bairro}`, margin + 4, y + 6);
       y += 11;
 
       if (produtosNF.length === 0) {
@@ -345,7 +345,6 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
          return;
       }
 
-      // Cabeçalho da Tabela de Produtos
       doc.setFillColor(226, 232, 240);
       doc.rect(margin, y, W - margin * 2, 6, 'F');
       doc.setFontSize(7);
@@ -356,7 +355,6 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
       doc.text('QTD CX', W - margin - 20, y + 4, { align: 'right' });
       y += 6;
 
-      // Linhas dos Produtos
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(15, 23, 42);
       
@@ -385,7 +383,6 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
         y += 6;
       });
 
-      // Subtotal da NF
       checkY(8);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
@@ -394,7 +391,6 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
       y += 8;
     });
 
-    // Rodapé do Cliente (Total Geral a Separar)
     checkY(12);
     doc.setFillColor(226, 232, 240);
     doc.rect(margin, y, W - margin * 2, 7, 'F');
@@ -404,7 +400,7 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
     doc.text(`TOTAL A SEPARAR (ESTE CLIENTE):`, margin + 2, y + 5);
     doc.text(`${totalCaixasCliente.toLocaleString('pt-BR')} cx`, W - margin - 5, y + 5, { align: 'right' });
     
-    y += 12; // Dá um "Enter" final antes de renderizar o próximo cliente
+    y += 12;
   });
 
   doc.save(`Mapa_Separacao_Bonus_${bonus.numero_bonus}.pdf`);
