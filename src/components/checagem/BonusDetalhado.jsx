@@ -232,7 +232,7 @@ function DivergenciasSection({ bonus }) {
   );
 }
 
-// ─── MAPA DE SEPARAÇÃO (Contínuo na mesma página + Cidade) ────────────────────
+// ─── MAPA DE SEPARAÇÃO (Contínuo na mesma página + xMun e xBairro) ────────────
 function gerarMapaSeparacao(bonus, notasVinculadas) {
   if (!notasVinculadas || notasVinculadas.length === 0) {
     toast.error("Nenhuma Nota Fiscal vinculada a este bônus para gerar o mapa.");
@@ -319,17 +319,21 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
       
       const numeroNF = nf.numero_nf || nf.nf || 'S/N';
       const rota = decodeHTML(nf.rota || nf.rota_descricao || 'Rota Não Definida');
-      const cidade = decodeHTML(nf.cidade_destinatario || nf.municipio_destinatario || nf.cidade || nf.municipio || 'N/I');
+      
+      // Ajuste: buscando especificamente pelas tags xMun e xBairro informadas
+      const cidade = decodeHTML(nf.xMun || nf.cidade_destinatario || nf.municipio_destinatario || nf.cidade || nf.municipio || 'N/I');
+      const bairro = decodeHTML(nf.xBairro || nf.bairro_destinatario || nf.bairro || 'N/I');
+      
       const produtosNF = nf.itens || [];
 
-      // Cabeçalho da NF, Rota e Cidade
+      // Cabeçalho da NF, Rota, Cidade e Bairro
       doc.setFillColor(240, 244, 248);
       doc.roundedRect(margin, y, W - margin * 2, 9, 2, 2, 'F');
       
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(9);
       doc.setTextColor(30, 58, 138); 
-      doc.text(`NF: ${numeroNF}   |   Rota: ${rota}   |   Cidade: ${cidade}`, margin + 4, y + 6);
+      doc.text(`NF: ${numeroNF}   |   Rota: ${rota}   |   Cidade: ${cidade}   |   Bairro: ${bairro}`, margin + 4, y + 6);
       y += 11;
 
       if (produtosNF.length === 0) {
