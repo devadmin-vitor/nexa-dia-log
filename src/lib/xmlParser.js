@@ -80,6 +80,12 @@ export function parseNFeXML(xmlString) {
     emitente_cnpj: getText(emit, 'CNPJ'),
     destinatario_nome: getText(dest, 'xNome'),
     destinatario_cnpj: getText(dest, 'CNPJ') || getText(dest, 'CPF'),
+    
+    // 👇 AQUI ESTÃO OS CAMPOS NOVOS 👇
+    municipio: getText(dest, 'xMun'),
+    bairro: getText(dest, 'xBairro'),
+    // 👆 AQUI ESTÃO OS CAMPOS NOVOS 👆
+
     valor_total: parseFloat(getText(total, 'vNF') || '0'),
     peso_bruto: pesoBruto,
     itens,
