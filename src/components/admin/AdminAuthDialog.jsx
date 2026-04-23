@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { ShieldAlert, Eye, EyeOff } from 'lucide-react';
 
 const ADMIN_USER = 'admin';
-const ADMIN_PASS = 'amintor';
+const ADMIN_PASS = 'admintor';
 
 export default function AdminAuthDialog({ open, onOpenChange, onAuthorized, title, description }) {
   const [usuario, setUsuario] = useState('');
