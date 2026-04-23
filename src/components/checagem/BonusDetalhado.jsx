@@ -102,11 +102,11 @@ function ItensTable({ itens, titulo, cor }) {
           </tbody>
         </table>
         <div className="px-3 py-2 bg-muted/30 border-t border-border flex items-center justify-end gap-6 text-xs">
-          <span>Total Boas: <span className="font-bold">{itensBons.reduce((a, i) => a + (i.qtd_caixas || i.qtd_esperada || 0), 0).toLocaleString('pt-BR')} cx</span></span>
+          <span>Total Boas: <span className="font-bold">{itensBons.reduce((a, i) => a + (Number(i.qtd_caixas) || Number(i.qtd_esperada) || 0), 0).toLocaleString('pt-BR')} cx</span></span>
           {itensAvaria.length > 0 && (
-            <span className="text-red-600">Total Avarias: <span className="font-bold">{itensAvaria.reduce((a, i) => a + (i.qtd_caixas || i.qtd_esperada || 0), 0).toLocaleString('pt-BR')} cx</span></span>
+            <span className="text-red-600">Total Avarias: <span className="font-bold">{itensAvaria.reduce((a, i) => a + (Number(i.qtd_caixas) || Number(i.qtd_esperada) || 0), 0).toLocaleString('pt-BR')} cx</span></span>
           )}
-          <span className="font-semibold">Total Geral: <span>{itens.reduce((a, i) => a + (i.qtd_caixas || i.qtd_esperada || 0), 0).toLocaleString('pt-BR')} cx</span></span>
+          <span className="font-semibold">Total Geral: <span>{itens.reduce((a, i) => a + (Number(i.qtd_caixas) || Number(i.qtd_esperada) || 0), 0).toLocaleString('pt-BR')} cx</span></span>
         </div>
       </div>
     </div>
@@ -123,14 +123,14 @@ function DivergenciasSection({ bonus }) {
   const espPorDesc = {};
   const eanEspPorDesc = {};
   esperados.forEach(i => {
-    espPorDesc[i.descricao] = (espPorDesc[i.descricao] || 0) + (i.qtd_esperada || 0);
+    espPorDesc[i.descricao] = (espPorDesc[i.descricao] || 0) + (Number(i.qtd_esperada) || 0);
     if (/^\d{8,14}$/.test(i.ean || '')) eanEspPorDesc[i.descricao] = i.ean;
   });
 
   const conf1PorDesc = {};
   const eanConf1PorDesc = {};
   conf1.forEach(i => {
-    conf1PorDesc[i.descricao] = (conf1PorDesc[i.descricao] || 0) + (i.qtd_caixas || 0);
+    conf1PorDesc[i.descricao] = (conf1PorDesc[i.descricao] || 0) + (Number(i.qtd_caixas) || 0);
     eanConf1PorDesc[i.descricao] = i.ean;
   });
 
@@ -140,9 +140,9 @@ function DivergenciasSection({ bonus }) {
 
   const totais1 = {};
   const descMap1 = {};
-  conf1.forEach(i => { totais1[i.ean] = (totais1[i.ean] || 0) + (i.qtd_caixas || 0); descMap1[i.ean] = i.descricao; });
+  conf1.forEach(i => { totais1[i.ean] = (totais1[i.ean] || 0) + (Number(i.qtd_caixas) || 0); descMap1[i.ean] = i.descricao; });
   const totais2 = {};
-  conf2.forEach(i => { totais2[i.ean] = (totais2[i.ean] || 0) + (i.qtd_caixas || 0); });
+  conf2.forEach(i => { totais2[i.ean] = (totais2[i.ean] || 0) + (Number(i.qtd_caixas) || 0); });
 
   const div12 = conf2.length > 0
     ? [...new Set([...Object.keys(totais1), ...Object.keys(totais2)])]
@@ -219,122 +219,163 @@ function DivergenciasSection({ bonus }) {
   );
 }
 
-// ─── Geração do PDF: MAPA DE SEPARAÇÃO ─────────────────────────────────────────
-function gerarMapaSeparacao(bonus, itensRef) {
+// ─── NOVO Geração do PDF: MAPA DE SEPARAÇÃO (Quebra por Cliente) ──────────────────────
+function gerarMapaSeparacao(bonus, notasVinculadas) {
+  if (!notasVinculadas || notasVinculadas.length === 0) {
+    toast.error("Nenhuma Nota Fiscal vinculada a este bônus para gerar o mapa.");
+    return;
+  }
+
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
   const W = 210;
   const H = 297;
   const margin = 14;
   const maxY = H - 20;
-  let y = margin;
 
-  const newPage = () => { doc.addPage(); y = margin + 5; };
-  const checkY = (need) => { if (y + need > maxY) newPage(); };
-
-  // Agrupar Itens: NF -> Rota -> Cliente
-  const grupos = {};
-  itensRef.forEach(item => {
-    // Fallbacks para garantir que campos não fiquem vazios (Ajuste os nomes conforme seu banco de dados)
-    const nf = item.numero_nf || item.nf || 'S/N';
-    const rota = item.rota || 'Rota Não Definida';
-    const cliente = item.cliente_nome || item.cliente || 'Cliente Padrão';
-
-    if (!grupos[nf]) grupos[nf] = {};
-    if (!grupos[nf][rota]) grupos[nf][rota] = {};
-    if (!grupos[nf][rota][cliente]) grupos[nf][rota][cliente] = [];
-
-    grupos[nf][rota][cliente].push(item);
+  // Agrupar Notas Fiscais por Cliente (Razão Social do Destinatário)
+  const gruposClientes = {};
+  notasVinculadas.forEach(nf => {
+    const clienteNome = nf.destinatario_nome || nf.razao_social_destinatario || nf.razao_social || nf.cliente_nome || 'Cliente Não Identificado';
+    if (!gruposClientes[clienteNome]) {
+      gruposClientes[clienteNome] = [];
+    }
+    gruposClientes[clienteNome].push(nf);
   });
 
-  // Cabeçalho Principal
-  doc.setFillColor(30, 64, 175); // Azul escuro
-  doc.rect(0, 0, W, 22, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.text(`Mapa de Separação - Bônus #${bonus.numero_bonus}`, margin, 10);
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`, margin, 16);
-  doc.setTextColor(0, 0, 0);
-  y = 30;
+  let isPrimeiraPagina = true;
 
-  // Renderizar os grupos
-  Object.keys(grupos).forEach(nf => {
-    Object.keys(grupos[nf]).forEach(rota => {
-      Object.keys(grupos[nf][rota]).forEach(cliente => {
-        const itens = grupos[nf][rota][cliente];
+  // Iterar sobre cada Cliente (CADA CLIENTE TERÁ SUA PÁGINA)
+  Object.keys(gruposClientes).forEach(cliente => {
+    
+    // QUEBRA POR CLIENTE: Adiciona uma nova página se não for o primeiro
+    if (!isPrimeiraPagina) {
+      doc.addPage();
+    }
+    isPrimeiraPagina = false;
+    
+    let y = margin;
+    const newPage = () => { doc.addPage(); y = margin + 5; };
+    const checkY = (need) => { if (y + need > maxY) newPage(); };
+
+    // 1. Cabeçalho Principal (Azul Escuro)
+    doc.setFillColor(30, 64, 175); 
+    doc.rect(0, 0, W, 22, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(`Mapa de Separação - Bônus #${bonus.numero_bonus}`, margin, 10);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`, margin, 16);
+    
+    y = 32;
+
+    // 2. Destaque do Cliente Atual
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(`Destinatário:`, margin, y);
+    doc.setTextColor(30, 64, 175);
+    const splitNome = doc.splitTextToSize(cliente, W - margin * 2);
+    doc.text(splitNome, margin, y + 6);
+    y += 10 + (splitNome.length * 6);
+
+    let totalCaixasCliente = 0;
+
+    // 3. Iterar sobre as NFs deste Cliente
+    const nfsDoCliente = gruposClientes[cliente];
+    
+    nfsDoCliente.forEach(nf => {
+      checkY(25);
+      
+      const numeroNF = nf.numero_nf || nf.nf || 'S/N';
+      const rota = nf.rota || nf.rota_descricao || 'Rota Não Definida';
+      const produtosNF = nf.itens || [];
+
+      // Cabeçalho da NF e Rota
+      doc.setFillColor(240, 244, 248);
+      doc.roundedRect(margin, y, W - margin * 2, 10, 2, 2, 'F');
+      
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.setTextColor(30, 58, 138); 
+      doc.text(`NF: ${numeroNF}   |   Rota: ${rota}`, margin + 4, y + 6.5);
+      y += 14;
+
+      if (produtosNF.length === 0) {
+         doc.setFontSize(8);
+         doc.setTextColor(100, 100, 100);
+         doc.setFont('helvetica', 'italic');
+         doc.text("Nenhum produto detalhado encontrado no banco para esta NF.", margin + 4, y);
+         y += 10;
+         return; // Pula para a próxima NF
+      }
+
+      // Cabeçalho da Tabela de Produtos
+      doc.setFillColor(226, 232, 240);
+      doc.rect(margin, y, W - margin * 2, 6, 'F');
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(71, 85, 105);
+      doc.text('EAN / CÓDIGO', margin + 2, y + 4);
+      doc.text('DESCRIÇÃO DO PRODUTO', margin + 35, y + 4);
+      doc.text('QTD CX', W - margin - 20, y + 4, { align: 'right' });
+      y += 6;
+
+      // Linhas dos Produtos
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(15, 23, 42);
+      
+      let totalCaixasNF = 0;
+
+      produtosNF.forEach((item, idx) => {
+        checkY(8);
+        if (idx % 2 === 0) {
+          doc.setFillColor(248, 250, 252);
+          doc.rect(margin, y, W - margin * 2, 6, 'F');
+        }
         
-        checkY(35);
-        
-        // Cabeçalho do Grupo (NF, Rota, Cliente)
-        doc.setFillColor(240, 244, 248);
-        doc.roundedRect(margin, y, W - margin * 2, 18, 2, 2, 'F');
-        
+        const qtd = Number(item.qtd_caixas || item.quantidade_caixas || item.quantidade || item.qtd || item.qtd_esperada || 0);
+        const ean = String(item.ean || item.codigo_barras || '—');
+        const desc = String(item.descricao || item.nome_produto || item.produto_descricao || '—');
+
+        totalCaixasNF += qtd;
+        totalCaixasCliente += qtd;
+
+        doc.text(ean, margin + 2, y + 4);
+        doc.text(doc.splitTextToSize(desc, 110)[0], margin + 35, y + 4);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(9);
-        doc.setTextColor(30, 58, 138); // Azul forte
-        doc.text(`NF: ${nf}   |   Rota: ${rota}`, margin + 4, y + 6);
-        
-        doc.setFontSize(11);
-        doc.setTextColor(15, 23, 42); // Quase preto
-        doc.text(`Cliente: ${cliente}`, margin + 4, y + 13);
-        y += 22;
-
-        // Cabeçalho da Tabela
-        doc.setFillColor(226, 232, 240);
-        doc.rect(margin, y, W - margin * 2, 6, 'F');
-        doc.setFontSize(7);
-        doc.setFont('helvetica', 'bold');
-        doc.setTextColor(71, 85, 105);
-        doc.text('EAN', margin + 2, y + 4);
-        doc.text('DESCRIÇÃO DO PRODUTO', margin + 35, y + 4);
-        doc.text('QTD CX', W - margin - 20, y + 4, { align: 'right' });
-        y += 6;
-
-        // Linhas de Itens
+        doc.text(qtd.toLocaleString('pt-BR'), W - margin - 5, y + 4, { align: 'right' });
         doc.setFont('helvetica', 'normal');
-        doc.setTextColor(15, 23, 42);
         
-        let totalCaixas = 0;
-
-        itens.forEach((item, idx) => {
-          checkY(8);
-          if (idx % 2 === 0) {
-            doc.setFillColor(248, 250, 252);
-            doc.rect(margin, y, W - margin * 2, 6, 'F');
-          }
-          
-          const qtd = Number(item.qtd_caixas || item.qtd_esperada || 0);
-          totalCaixas += qtd;
-
-          doc.text(String(item.ean || '—'), margin + 2, y + 4);
-          doc.text(doc.splitTextToSize(String(item.descricao || '—'), 110)[0], margin + 35, y + 4);
-          doc.setFont('helvetica', 'bold');
-          doc.text(qtd.toLocaleString('pt-BR'), W - margin - 5, y + 4, { align: 'right' });
-          doc.setFont('helvetica', 'normal');
-          
-          y += 6;
-        });
-
-        // Rodapé do Grupo (Totais)
-        checkY(10);
-        doc.setFillColor(241, 245, 249);
-        doc.rect(margin, y, W - margin * 2, 7, 'F');
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(8);
-        doc.text('Total a separar deste cliente:', margin + 2, y + 4.5);
-        doc.text(`${totalCaixas.toLocaleString('pt-BR')} cx`, W - margin - 5, y + 4.5, { align: 'right' });
-        
-        y += 12; // Espaço para o próximo bloco
+        y += 6;
       });
+
+      // Subtotal da NF
+      checkY(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text(`Subtotal NF ${numeroNF}:`, margin + 35, y + 4);
+      doc.text(`${totalCaixasNF.toLocaleString('pt-BR')} cx`, W - margin - 5, y + 4, { align: 'right' });
+      y += 10;
     });
+
+    // 4. Rodapé do Cliente (Total Geral a Separar)
+    checkY(15);
+    doc.setFillColor(226, 232, 240);
+    doc.rect(margin, y, W - margin * 2, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(15, 23, 42);
+    doc.text(`TOTAL A SEPARAR PARA ESTE CLIENTE:`, margin + 2, y + 5.5);
+    doc.text(`${totalCaixasCliente.toLocaleString('pt-BR')} cx`, W - margin - 5, y + 5.5, { align: 'right' });
+    
   });
 
   doc.save(`Mapa_Separacao_Bonus_${bonus.numero_bonus}.pdf`);
 }
 
-// ─── Geração do PDF: RELATÓRIO NORMAL ─────────────────────────────────────────
+// ─── Geração do PDF: RELATÓRIO GERAL (Antigo) ─────────────────────────────────────────
 function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas: true, avarias: true }, orientacao = 'portrait') {
   const isLandscape = orientacao === 'landscape';
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: orientacao });
@@ -406,9 +447,9 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
   doc.setTextColor(0, 0, 0);
   y = headerH + 6;
 
-  const totalConferido1 = (bonus.itens_conferidos || []).reduce((a, i) => a + (i.qtd_caixas || 0), 0);
-  const totalConferido2 = (bonus.itens_conferidos_2 || []).reduce((a, i) => a + (i.qtd_caixas || 0), 0);
-  const totalPedido = (bonus.itens_esperados || []).reduce((a, i) => a + (i.qtd_esperada || 0), 0);
+  const totalConferido1 = (bonus.itens_conferidos || []).reduce((a, i) => a + (Number(i.qtd_caixas) || 0), 0);
+  const totalConferido2 = (bonus.itens_conferidos_2 || []).reduce((a, i) => a + (Number(i.qtd_caixas) || 0), 0);
+  const totalPedido = (bonus.itens_esperados || []).reduce((a, i) => a + (Number(i.qtd_esperada) || 0), 0);
   const statusLabel = { conferido: 'Conferido', divergente: 'Divergente', em_conferencia: '1ª Conferência', aguardando_2a_conferencia: 'Ag. 2ª Conferência' };
 
   doc.setFillColor(247, 250, 247);
@@ -447,7 +488,7 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
 
   const espPorDesc = {};
   (bonus.itens_esperados || []).forEach(i => {
-    espPorDesc[i.descricao] = (espPorDesc[i.descricao] || 0) + (i.qtd_esperada || 0);
+    espPorDesc[i.descricao] = (espPorDesc[i.descricao] || 0) + (Number(i.qtd_esperada) || 0);
   });
 
   const drawItensTable = (itens, titulo) => {
@@ -476,7 +517,7 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
     itens.forEach((item, idx) => {
       checkY(6);
       const isAvaria = item.tipo_estoque === 'AVARIA';
-      const qtdConf = item.qtd_caixas || 0;
+      const qtdConf = Number(item.qtd_caixas) || 0;
       const qtdPed  = espPorDesc[item.descricao] || 0;
       const diff    = qtdConf - qtdPed;
 
@@ -548,9 +589,9 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
   if (filtros.faltas) {
     const itensConferidosRef = bonus.itens_conferidos_2?.length ? bonus.itens_conferidos_2 : (bonus.itens_conferidos || []);
     const confPorDesc = {};
-    itensConferidosRef.forEach(i => { confPorDesc[i.descricao] = (confPorDesc[i.descricao] || 0) + (i.qtd_caixas || 0); });
+    itensConferidosRef.forEach(i => { confPorDesc[i.descricao] = (confPorDesc[i.descricao] || 0) + (Number(i.qtd_caixas) || 0); });
     const itensPendentes = (bonus.itens_esperados || [])
-      .map(item => ({ ...item, qtd_conferida: confPorDesc[item.descricao] || 0, qtd_pendente: (item.qtd_esperada || 0) - (confPorDesc[item.descricao] || 0) }))
+      .map(item => ({ ...item, qtd_conferida: confPorDesc[item.descricao] || 0, qtd_pendente: (Number(item.qtd_esperada) || 0) - (confPorDesc[item.descricao] || 0) }))
       .filter(item => item.qtd_pendente > 0);
 
     if (itensPendentes.length > 0) {
@@ -639,9 +680,9 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
 
   const itens1 = bonus.itens_conferidos || [];
   const itens2 = bonus.itens_conferidos_2 || [];
-  const totalCx1 = itens1.reduce((a, i) => a + (i.qtd_caixas || i.qtd_esperada || 0), 0);
-  const totalCx2 = itens2.reduce((a, i) => a + (i.qtd_caixas || i.qtd_esperada || 0), 0);
-  const totalEsp = (bonus.itens_esperados || []).reduce((a, i) => a + (i.qtd_esperada || 0), 0);
+  const totalCx1 = itens1.reduce((a, i) => a + (Number(i.qtd_caixas) || Number(i.qtd_esperada) || 0), 0);
+  const totalCx2 = itens2.reduce((a, i) => a + (Number(i.qtd_caixas) || Number(i.qtd_esperada) || 0), 0);
+  const totalEsp = (bonus.itens_esperados || []).reduce((a, i) => a + (Number(i.qtd_esperada) || 0), 0);
   const temAvaria1 = itens1.some(i => i.tipo_estoque === 'AVARIA');
   const temAvaria2 = itens2.some(i => i.tipo_estoque === 'AVARIA');
 
@@ -700,18 +741,12 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
     );
   };
 
-  // Botão NOVO: Mapa de Separação
   const handleMapaSeparacao = () => {
-    // Escolhe a lista de itens mais atualizada para gerar o mapa
-    const itensParaMapa = bonus.itens_conferidos_2?.length > 0 
-      ? bonus.itens_conferidos_2 
-      : (bonus.itens_conferidos?.length > 0 ? bonus.itens_conferidos : bonus.itens_esperados || []);
-      
-    if (itensParaMapa.length === 0) {
-      toast.error('Nenhum item encontrado neste bônus para gerar o mapa.');
+    if (!notasVinculadas || notasVinculadas.length === 0) {
+      toast.error('Não é possível emitir o mapa: Não há Notas Fiscais vinculadas a este bônus no banco de dados.');
       return;
     }
-    gerarMapaSeparacao(bonus, itensParaMapa);
+    gerarMapaSeparacao(bonus, notasVinculadas);
   };
 
   return (
@@ -794,12 +829,12 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
       {notasVinculadas.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {notasVinculadas.map(nf => (
-            <span key={nf.id} className="text-xs font-mono bg-muted border border-border rounded px-2 py-1">NF-{nf.numero_nf}</span>
+            <span key={nf.id} className="text-xs font-mono bg-muted border border-border rounded px-2 py-1">NF-{nf.numero_nf || nf.nf}</span>
           ))}
         </div>
       )}
 
-      {/* ── Painel de exportação PDF (AGORA COM MAPA DE SEPARAÇÃO) ─────────── */}
+      {/* ── Painel de exportação PDF ─────────── */}
       <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
           <span>Relatórios e Exportações</span>
@@ -822,7 +857,6 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
           </div>
 
           <div className="flex flex-wrap gap-2 sm:ml-auto w-full sm:w-auto">
-            {/* NOVO BOTÃO: Mapa de Separação */}
             <Button onClick={handleMapaSeparacao} variant="secondary" size="sm" className="gap-2 flex-1 sm:flex-none border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100">
               <Map className="w-4 h-4" />
               Mapa de Separação
@@ -918,9 +952,9 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
       {(() => {
         const confRef = itens2.length ? itens2 : itens1;
         const confPorDesc = {};
-        confRef.forEach(i => { confPorDesc[i.descricao] = (confPorDesc[i.descricao] || 0) + (i.qtd_caixas || i.qtd_esperada || 0); });
+        confRef.forEach(i => { confPorDesc[i.descricao] = (confPorDesc[i.descricao] || 0) + (Number(i.qtd_caixas) || Number(i.qtd_esperada) || 0); });
         const pendentes = (bonus.itens_esperados || [])
-          .map(item => ({ ...item, conferido: confPorDesc[item.descricao] || 0, pendente: (item.qtd_esperada || 0) - (confPorDesc[item.descricao] || 0) }))
+          .map(item => ({ ...item, conferido: confPorDesc[item.descricao] || 0, pendente: (Number(item.qtd_esperada) || 0) - (confPorDesc[item.descricao] || 0) }))
           .filter(item => item.pendente > 0);
         if (pendentes.length === 0) return null;
         return (
