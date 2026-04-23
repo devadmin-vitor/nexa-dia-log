@@ -36,6 +36,52 @@ function decodeHTML(text) {
     .replace(/&#39;/g, "'");
 }
 
+// ─── Extrator Profundo de Tags XML/JSON (NOVO) ──────────────────────────────
+function extractTag(obj, tagName) {
+  if (!obj) return null;
+  
+  // 1. Busca recursiva no objeto (caso o XML tenha sido convertido para JSON pelo backend)
+  function searchObj(o, key) {
+    if (!o || typeof o !== 'object') return null;
+    
+    // Procura chaves exatas (ignorando case)
+    const foundKey = Object.keys(o).find(k => k.toLowerCase() === key.toLowerCase());
+    if (foundKey && o[foundKey] !== null && o[foundKey] !== undefined) {
+      // Se for um objeto com _text (padrão de alguns parsers XML-to-JSON)
+      if (typeof o[foundKey] === 'object' && o[foundKey]._text) return o[foundKey]._text;
+      if (typeof o[foundKey] === 'string' || typeof o[foundKey] === 'number') return String(o[foundKey]);
+    }
+    
+    for (let k in o) {
+      let res = searchObj(o[k], key);
+      if (res) return res;
+    }
+    return null;
+  }
+  
+  let val = searchObj(obj, tagName);
+  if (val) return val;
+
+  // 2. Busca por Regex caso o XML esteja puro/escrito dentro de alguma string
+  try {
+    const str = typeof obj === 'string' ? obj : JSON.stringify(obj);
+    
+    // Procura por <tag>VALOR</tag>
+    const regex = new RegExp(`<${tagName}[^>]*>(.*?)</${tagName}>`, 'i');
+    const match = str.match(regex);
+    if (match && match[1]) return match[1];
+
+    // Procura por &lt;tag&gt;VALOR&lt;/tag&gt; (HTML Escapado)
+    const regexEscaped = new RegExp(`&lt;${tagName}[^&]*&gt;(.*?)&lt;/${tagName}&gt;`, 'i');
+    const matchEscaped = str.match(regexEscaped);
+    if (matchEscaped && matchEscaped[1]) return matchEscaped[1];
+  } catch (e) {
+    // Falha silenciosa no regex
+  }
+
+  return null;
+}
+
 // ─── Toggle checkbox redondo ────────────────────────────────────────────────
 function RoundToggle({ checked, onChange, label, colorClass }) {
   return (
@@ -232,7 +278,7 @@ function DivergenciasSection({ bonus }) {
   );
 }
 
-// ─── MAPA DE SEPARAÇÃO (Somente xMun e xBairro mapeados direto do XML) ────────
+// ─── MAPA DE SEPARAÇÃO (Busca profunda de Município e Bairro do XML) ──────────
 function gerarMapaSeparacao(bonus, notasVinculadas) {
   if (!notasVinculadas || notasVinculadas.length === 0) {
     toast.error("Nenhuma Nota Fiscal vinculada a este bônus para gerar o mapa.");
@@ -310,23 +356,14 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
       const numeroNF = nf.numero_nf || nf.nf || 'S/N';
       const produtosNF = nf.itens || [];
 
-      // Extrator Robusto para xMun e xBairro do XML SEFAZ
-      let munVal = nf.xMun || nf.destinatario?.xMun || nf.dest?.enderDest?.xMun || nf.infNFe?.dest?.enderDest?.xMun;
-      let bairroVal = nf.xBairro || nf.destinatario?.xBairro || nf.dest?.enderDest?.xBairro || nf.infNFe?.dest?.enderDest?.xBairro;
-
-      // Fallback: Busca via Regex em todo o objeto stringificado, caso o XML tenha vindo compactado como string do backend
-      const nfString = JSON.stringify(nf);
-      if (!munVal && /<xMun>(.*?)<\/xMun>/.test(nfString)) {
-        munVal = nfString.match(/<xMun>(.*?)<\/xMun>/)[1];
-      }
-      if (!bairroVal && /<xBairro>(.*?)<\/xBairro>/.test(nfString)) {
-        bairroVal = nfString.match(/<xBairro>(.*?)<\/xBairro>/)[1];
-      }
+      // Uso do NOVO extrator profundo para buscar xMun e xBairro ignorando rotas e arrays aninhados
+      const munVal = extractTag(nf, 'xMun');
+      const bairroVal = extractTag(nf, 'xBairro');
 
       const municipio = decodeHTML(munVal || 'N/I');
       const bairro = decodeHTML(bairroVal || 'N/I');
 
-      // Cabeçalho da NF com Município e Bairro (Rota removida)
+      // Cabeçalho da NF APENAS com Município e Bairro (Sem Rota)
       doc.setFillColor(240, 244, 248);
       doc.roundedRect(margin, y, W - margin * 2, 9, 2, 2, 'F');
       
