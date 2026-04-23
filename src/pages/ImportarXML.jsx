@@ -3,7 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Play, RotateCcw } from 'lucide-react';
+import { Play, RotateCcw, RefreshCw, AlertTriangle } from 'lucide-react';
 import FileDropZone from '@/components/importacao/FileDropZone';
 import FileStatusItem from '@/components/importacao/FileStatusItem';
 import BatchSummary from '@/components/importacao/BatchSummary';
@@ -11,10 +11,38 @@ import { parseNFeXML } from '@/lib/xmlParser';
 import { generateNFePDF } from '@/lib/nfePdfGenerator';
 import { toast } from 'sonner';
 
+// ─── Botão de Toggle Customizado ──────────────────────────────────────────
+function ToggleMode({ checked, onChange, label, description }) {
+  return (
+    <div 
+      onClick={() => onChange(!checked)}
+      className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
+        checked 
+          ? 'bg-amber-50 border-amber-300 shadow-sm' 
+          : 'bg-muted/30 border-border hover:bg-muted/50'
+      }`}
+    >
+      <div className={`mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+        checked ? 'bg-amber-500 border-amber-500 text-white' : 'border-muted-foreground'
+      }`}>
+        {checked && <svg viewBox="0 0 14 14" fill="none" className="w-3 h-3"><path d="M3 7.5L5.5 10L11 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+      </div>
+      <div>
+        <p className={`text-sm font-semibold ${checked ? 'text-amber-900' : 'text-foreground'}`}>{label}</p>
+        <p className={`text-xs mt-0.5 ${checked ? 'text-amber-700' : 'text-muted-foreground'}`}>{description}</p>
+      </div>
+    </div>
+  );
+}
+
 export default function ImportarXML() {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [fileStatuses, setFileStatuses] = useState([]);
   const [processing, setProcessing] = useState(false);
+  
+  // NOVO ESTADO: Controla se vamos sobrescrever/atualizar notas existentes
+  const [modoAtualizacao, setModoAtualizacao] = useState(false);
+  
   const queryClient = useQueryClient();
 
   const updateStatus = (index, patch) => {
@@ -64,24 +92,45 @@ export default function ImportarXML() {
           // PDF generated but upload failed — still save NF
         }
 
-        // 5. Save NF to database — check by chave_acesso to prevent duplicates
+        // 5. Save/Update NF in database
         if (nfData.chave_acesso) {
           const existing = await base44.entities.NotaFiscal.filter({ chave_acesso: nfData.chave_acesso });
+          
           if (existing && existing.length > 0) {
-            updateStatus(i, { status: 'error', errorMessage: 'Nota Fiscal já importada anteriormente.' });
-            continue;
+            // SE A NOTA JÁ EXISTE NO BANCO:
+            if (modoAtualizacao) {
+              // MODO ATUALIZAÇÃO ATIVADO: Injeta Município, Bairro e recarrega os itens
+              await base44.entities.NotaFiscal.update(existing[0].id, {
+                municipio: nfData.municipio,
+                bairro: nfData.bairro,
+                itens: nfData.itens,
+                peso_bruto: nfData.peso_bruto,
+                valor_total: nfData.valor_total,
+                ...(pdfUrl ? { arquivo_pdf_url: pdfUrl } : {}),
+              });
+              
+              updateStatus(i, {
+                status: 'success',
+                nfNumero: nfData.numero_nf,
+                emitente: nfData.emitente_nome + ' (Atualizada)',
+                pdfBlob,
+              });
+              continue; // Pula a criação, vai para a próxima nota
+            } else {
+              // MODO PADRÃO: Rejeita a nota duplicada
+              updateStatus(i, { status: 'error', errorMessage: 'Nota Fiscal já importada anteriormente.' });
+              continue; // Pula a criação, vai para a próxima nota
+            }
           }
         }
 
+        // 6. Se a nota não existir (ou não tiver chave de acesso), cria uma nova
         const payload = {
           ...nfData,
           xml_nome_arquivo: file.name,
           status: 'importada',
           ...(pdfUrl ? { arquivo_pdf_url: pdfUrl } : {}),
         };
-
-        // 🚨 DEBUG CRUCIAL: Verificando o que está indo para o banco de dados 🚨
-        console.log(`[DEBUG NF-${nfData.numero_nf}] Payload enviado para a base44:`, payload);
 
         await base44.entities.NotaFiscal.create(payload);
 
@@ -100,8 +149,7 @@ export default function ImportarXML() {
     queryClient.invalidateQueries({ queryKey: ['notas-fiscais'] });
     setProcessing(false);
 
-    const success = fileStatuses.filter(f => f.status === 'success').length;
-    toast.success(`Processamento concluído! ${selectedFiles.length} arquivo(s) processado(s).`);
+    toast.success(`Processamento concluído! ${selectedFiles.length} arquivo(s) verificado(s).`);
   };
 
   const handleReset = () => {
@@ -118,18 +166,34 @@ export default function ImportarXML() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Importar XML de NF-e</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Selecione um ou mais arquivos XML de Nota Fiscal Eletrônica para importar, gerar PDF e vincular automaticamente
+          Selecione arquivos XML para importar novas notas ou atualizar informações de notas já cadastradas.
         </p>
       </div>
 
-      {/* Upload zone */}
+      {/* Painel de Controle antes de dropar os arquivos */}
       {fileStatuses.length === 0 && (
-        <FileDropZone onFilesSelected={handleFilesSelected} disabled={processing} />
+        <div className="space-y-4">
+          <ToggleMode 
+            checked={modoAtualizacao} 
+            onChange={setModoAtualizacao} 
+            label="Modo de Atualização (Sobrescrever Dados Faltantes)"
+            description="Se ativado, ao importar um XML de uma nota que já existe no sistema, ele irá atualizar os dados dela (como Município e Bairro) sem duplicá-la. Ideal para consertar notas antigas."
+          />
+          <FileDropZone onFilesSelected={handleFilesSelected} disabled={processing} />
+        </div>
       )}
 
       {/* File list */}
       {fileStatuses.length > 0 && (
         <div className="space-y-4">
+          
+          {modoAtualizacao && (
+             <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <p><strong>Modo Atualização Ativo:</strong> Notas já cadastradas serão atualizadas com novos dados do XML.</p>
+             </div>
+          )}
+
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-muted-foreground">
               {fileStatuses.length} arquivo(s) selecionado(s)
@@ -156,8 +220,8 @@ export default function ImportarXML() {
                 disabled={processing}
                 className="gap-2"
               >
-                <Play className="w-4 h-4" />
-                {processing ? 'Processando...' : 'Importar e Gerar PDFs'}
+                {modoAtualizacao ? <RefreshCw className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                {processing ? 'Processando...' : modoAtualizacao ? 'Atualizar Notas' : 'Importar e Gerar PDFs'}
               </Button>
               {!processing && (
                 <Button variant="outline" onClick={handleReset}>
@@ -175,7 +239,7 @@ export default function ImportarXML() {
               <BatchSummary files={fileStatuses} />
               <Button variant="outline" onClick={handleReset} className="gap-2">
                 <RotateCcw className="w-4 h-4" />
-                Importar Novos Arquivos
+                Nova Importação / Atualização
               </Button>
             </div>
           )}
