@@ -25,6 +25,17 @@ const STATUS_CONFIG = {
   divergente: { label: 'Divergente', className: 'bg-orange-100 text-orange-700 border-orange-200' },
 };
 
+// ─── Decodificador de Caracteres Especiais HTML ─────────────────────────────
+function decodeHTML(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
 // ─── Toggle checkbox redondo ────────────────────────────────────────────────
 function RoundToggle({ checked, onChange, label, colorClass }) {
   return (
@@ -72,7 +83,7 @@ function ItensTable({ itens, titulo, cor }) {
             {itensBons.map((item, i) => (
               <tr key={i} className="hover:bg-muted/30">
                 <td className="px-3 py-2 font-mono text-muted-foreground">{item.ean || '—'}</td>
-                <td className="px-3 py-2 font-medium">{item.descricao || '—'}</td>
+                <td className="px-3 py-2 font-medium">{decodeHTML(item.descricao) || '—'}</td>
                 <td className="px-3 py-2 text-center tabular-nums">
                   {item.validade ? format(new Date(item.validade), 'dd/MM/yyyy') : <span className="text-muted-foreground/50">—</span>}
                 </td>
@@ -86,7 +97,7 @@ function ItensTable({ itens, titulo, cor }) {
             {itensAvaria.map((item, i) => (
               <tr key={`av_${i}`} className="bg-red-50/50 hover:bg-red-50">
                 <td className="px-3 py-2 font-mono text-muted-foreground">{item.ean || '—'}</td>
-                <td className="px-3 py-2 font-medium">{item.descricao || '—'}</td>
+                <td className="px-3 py-2 font-medium">{decodeHTML(item.descricao) || '—'}</td>
                 <td className="px-3 py-2 text-center tabular-nums">
                   {item.validade ? format(new Date(item.validade), 'dd/MM/yyyy') : <span className="text-muted-foreground/50">—</span>}
                 </td>
@@ -123,15 +134,17 @@ function DivergenciasSection({ bonus }) {
   const espPorDesc = {};
   const eanEspPorDesc = {};
   esperados.forEach(i => {
-    espPorDesc[i.descricao] = (espPorDesc[i.descricao] || 0) + (Number(i.qtd_esperada) || 0);
-    if (/^\d{8,14}$/.test(i.ean || '')) eanEspPorDesc[i.descricao] = i.ean;
+    const d = decodeHTML(i.descricao);
+    espPorDesc[d] = (espPorDesc[d] || 0) + (Number(i.qtd_esperada) || 0);
+    if (/^\d{8,14}$/.test(i.ean || '')) eanEspPorDesc[d] = i.ean;
   });
 
   const conf1PorDesc = {};
   const eanConf1PorDesc = {};
   conf1.forEach(i => {
-    conf1PorDesc[i.descricao] = (conf1PorDesc[i.descricao] || 0) + (Number(i.qtd_caixas) || 0);
-    eanConf1PorDesc[i.descricao] = i.ean;
+    const d = decodeHTML(i.descricao);
+    conf1PorDesc[d] = (conf1PorDesc[d] || 0) + (Number(i.qtd_caixas) || 0);
+    eanConf1PorDesc[d] = i.ean;
   });
 
   const divNF = [...new Set([...Object.keys(espPorDesc), ...Object.keys(conf1PorDesc)])]
@@ -140,7 +153,7 @@ function DivergenciasSection({ bonus }) {
 
   const totais1 = {};
   const descMap1 = {};
-  conf1.forEach(i => { totais1[i.ean] = (totais1[i.ean] || 0) + (Number(i.qtd_caixas) || 0); descMap1[i.ean] = i.descricao; });
+  conf1.forEach(i => { totais1[i.ean] = (totais1[i.ean] || 0) + (Number(i.qtd_caixas) || 0); descMap1[i.ean] = decodeHTML(i.descricao); });
   const totais2 = {};
   conf2.forEach(i => { totais2[i.ean] = (totais2[i.ean] || 0) + (Number(i.qtd_caixas) || 0); });
 
@@ -219,7 +232,7 @@ function DivergenciasSection({ bonus }) {
   );
 }
 
-// ─── NOVO Geração do PDF: MAPA DE SEPARAÇÃO (Quebra por Cliente) ──────────────────────
+// ─── MAPA DE SEPARAÇÃO (Contínuo na mesma página) ─────────────────────────────
 function gerarMapaSeparacao(bonus, notasVinculadas) {
   if (!notasVinculadas || notasVinculadas.length === 0) {
     toast.error("Nenhuma Nota Fiscal vinculada a este bônus para gerar o mapa.");
@@ -232,83 +245,99 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
   const margin = 14;
   const maxY = H - 20;
 
-  // Agrupar Notas Fiscais por Cliente (Razão Social do Destinatário)
+  // Agrupar Notas Fiscais por Cliente com decodificação limpa
   const gruposClientes = {};
   notasVinculadas.forEach(nf => {
-    const clienteNome = nf.destinatario_nome || nf.razao_social_destinatario || nf.razao_social || nf.cliente_nome || 'Cliente Não Identificado';
+    const bruto = nf.destinatario_nome || nf.razao_social_destinatario || nf.razao_social || nf.cliente_nome || 'Cliente Não Identificado';
+    const clienteNome = decodeHTML(bruto);
     if (!gruposClientes[clienteNome]) {
       gruposClientes[clienteNome] = [];
     }
     gruposClientes[clienteNome].push(nf);
   });
 
-  let isPrimeiraPagina = true;
+  let y = margin;
 
-  // Iterar sobre cada Cliente (CADA CLIENTE TERÁ SUA PÁGINA)
-  Object.keys(gruposClientes).forEach(cliente => {
-    
-    // QUEBRA POR CLIENTE: Adiciona uma nova página se não for o primeiro
-    if (!isPrimeiraPagina) {
-      doc.addPage();
-    }
-    isPrimeiraPagina = false;
-    
-    let y = margin;
-    const newPage = () => { doc.addPage(); y = margin + 5; };
-    const checkY = (need) => { if (y + need > maxY) newPage(); };
-
-    // 1. Cabeçalho Principal (Azul Escuro)
+  // Função para desenhar o topo azul
+  const printMainHeader = () => {
     doc.setFillColor(30, 64, 175); 
     doc.rect(0, 0, W, 22, 'F');
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
-    doc.text(`Mapa de Separação - Bônus #${bonus.numero_bonus}`, margin, 10);
+    doc.text(`Mapa de Separação - Bônus #${decodeHTML(bonus.numero_bonus)}`, margin, 10);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
     doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`, margin, 16);
-    
     y = 32;
+  };
 
-    // 2. Destaque do Cliente Atual
-    doc.setFontSize(16);
+  const newPage = () => {
+    doc.addPage();
+    printMainHeader();
+  };
+
+  const checkY = (need) => {
+    if (y + need > maxY) newPage();
+  };
+
+  // Imprime o cabeçalho na primeira página
+  printMainHeader();
+
+  // Iterar sobre cada Cliente (Continua na mesma folha o máximo possível)
+  Object.keys(gruposClientes).forEach((cliente, index) => {
+    
+    // Garante que tem espaço para pelo menos o nome do cliente e o cabeçalho da primeira NF
+    checkY(35);
+
+    // Linha divisória suave entre clientes (exceto pro primeiro cliente ou logo após o header)
+    if (index > 0 && y > 35) {
+      doc.setDrawColor(210, 215, 220);
+      doc.line(margin, y - 4, W - margin, y - 4);
+      y += 2; // Espaçamento extra após a linha
+    }
+
+    // Destaque do Cliente Atual
+    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(15, 23, 42);
-    doc.text(`Destinatário:`, margin, y);
-    doc.setTextColor(30, 64, 175);
-    const splitNome = doc.splitTextToSize(cliente, W - margin * 2);
-    doc.text(splitNome, margin, y + 6);
-    y += 10 + (splitNome.length * 6);
+    doc.text(`Cliente:`, margin, y);
+    doc.setTextColor(30, 64, 175); // Azul
+    
+    // Alinha o nome do cliente na frente da palavra "Cliente:"
+    const splitNome = doc.splitTextToSize(cliente, W - margin * 2 - 18);
+    doc.text(splitNome, margin + 16, y);
+    y += Math.max(8, splitNome.length * 5);
 
     let totalCaixasCliente = 0;
 
-    // 3. Iterar sobre as NFs deste Cliente
+    // Iterar sobre as NFs deste Cliente
     const nfsDoCliente = gruposClientes[cliente];
     
     nfsDoCliente.forEach(nf => {
       checkY(25);
       
       const numeroNF = nf.numero_nf || nf.nf || 'S/N';
-      const rota = nf.rota || nf.rota_descricao || 'Rota Não Definida';
+      const rota = decodeHTML(nf.rota || nf.rota_descricao || 'Rota Não Definida');
       const produtosNF = nf.itens || [];
 
       // Cabeçalho da NF e Rota
       doc.setFillColor(240, 244, 248);
-      doc.roundedRect(margin, y, W - margin * 2, 10, 2, 2, 'F');
+      doc.roundedRect(margin, y, W - margin * 2, 9, 2, 2, 'F');
       
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setTextColor(30, 58, 138); 
-      doc.text(`NF: ${numeroNF}   |   Rota: ${rota}`, margin + 4, y + 6.5);
-      y += 14;
+      doc.text(`NF: ${numeroNF}   |   Rota: ${rota}`, margin + 4, y + 6);
+      y += 11;
 
       if (produtosNF.length === 0) {
          doc.setFontSize(8);
          doc.setTextColor(100, 100, 100);
          doc.setFont('helvetica', 'italic');
-         doc.text("Nenhum produto detalhado encontrado no banco para esta NF.", margin + 4, y);
-         y += 10;
-         return; // Pula para a próxima NF
+         doc.text("Nenhum produto detalhado encontrado para esta NF.", margin + 4, y);
+         y += 8;
+         return;
       }
 
       // Cabeçalho da Tabela de Produtos
@@ -337,7 +366,7 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
         
         const qtd = Number(item.qtd_caixas || item.quantidade_caixas || item.quantidade || item.qtd || item.qtd_esperada || 0);
         const ean = String(item.ean || item.codigo_barras || '—');
-        const desc = String(item.descricao || item.nome_produto || item.produto_descricao || '—');
+        const desc = decodeHTML(item.descricao || item.nome_produto || item.produto_descricao || '—');
 
         totalCaixasNF += qtd;
         totalCaixasCliente += qtd;
@@ -352,24 +381,25 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
       });
 
       // Subtotal da NF
-      checkY(10);
+      checkY(8);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8);
       doc.text(`Subtotal NF ${numeroNF}:`, margin + 35, y + 4);
       doc.text(`${totalCaixasNF.toLocaleString('pt-BR')} cx`, W - margin - 5, y + 4, { align: 'right' });
-      y += 10;
+      y += 8;
     });
 
-    // 4. Rodapé do Cliente (Total Geral a Separar)
-    checkY(15);
+    // Rodapé do Cliente (Total Geral a Separar)
+    checkY(12);
     doc.setFillColor(226, 232, 240);
-    doc.rect(margin, y, W - margin * 2, 8, 'F');
+    doc.rect(margin, y, W - margin * 2, 7, 'F');
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
+    doc.setFontSize(9);
     doc.setTextColor(15, 23, 42);
-    doc.text(`TOTAL A SEPARAR PARA ESTE CLIENTE:`, margin + 2, y + 5.5);
-    doc.text(`${totalCaixasCliente.toLocaleString('pt-BR')} cx`, W - margin - 5, y + 5.5, { align: 'right' });
+    doc.text(`TOTAL A SEPARAR (ESTE CLIENTE):`, margin + 2, y + 5);
+    doc.text(`${totalCaixasCliente.toLocaleString('pt-BR')} cx`, W - margin - 5, y + 5, { align: 'right' });
     
+    y += 12; // Dá um "Enter" final antes de renderizar o próximo cliente
   });
 
   doc.save(`Mapa_Separacao_Bonus_${bonus.numero_bonus}.pdf`);
@@ -981,7 +1011,7 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
                   {pendentes.map((item, i) => (
                     <tr key={i} className="hover:bg-orange-50/50">
                       <td className="px-3 py-2 font-mono text-muted-foreground">{item.ean || '—'}</td>
-                      <td className="px-3 py-2 font-medium">{item.descricao || '—'}</td>
+                      <td className="px-3 py-2 font-medium">{decodeHTML(item.descricao) || '—'}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{(item.qtd_esperada || 0).toLocaleString('pt-BR')}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{(item.conferido || 0).toLocaleString('pt-BR')}</td>
                       <td className="px-3 py-2 text-right font-bold tabular-nums text-red-600">-{(item.pendente || 0).toLocaleString('pt-BR')}</td>
@@ -1008,7 +1038,7 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
       {/* Observação */}
       {bonus.observacao && (
         <section className="p-4 rounded-xl bg-muted/50 border border-border text-sm text-muted-foreground">
-          <strong className="text-foreground">Observação:</strong> {bonus.observacao}
+          <strong className="text-foreground">Observação:</strong> {decodeHTML(bonus.observacao)}
         </section>
       )}
     </div>
