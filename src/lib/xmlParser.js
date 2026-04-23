@@ -12,6 +12,7 @@ export function parseNFeXML(xmlString) {
 
   // Helper to get text content of a tag (handles namespaces)
   const getText = (parent, ...tags) => {
+    if (!parent) return ''; // Trava de segurança essencial
     for (const tag of tags) {
       const el = parent.querySelector(tag) || parent.getElementsByTagName(tag)[0];
       if (el) return el.textContent?.trim() || '';
@@ -25,6 +26,10 @@ export function parseNFeXML(xmlString) {
   const ide = infNFe.querySelector('ide') || infNFe.getElementsByTagName('ide')[0];
   const emit = infNFe.querySelector('emit') || infNFe.getElementsByTagName('emit')[0];
   const dest = infNFe.querySelector('dest') || infNFe.getElementsByTagName('dest')[0];
+  
+  // Captura especificamente o bloco de endereço do destinatário
+  const enderDest = dest ? (dest.querySelector('enderDest') || dest.getElementsByTagName('enderDest')[0]) : null;
+  
   const total = infNFe.querySelector('total') || infNFe.getElementsByTagName('total')[0];
 
   const numeroNF = getText(ide, 'nNF');
@@ -81,10 +86,10 @@ export function parseNFeXML(xmlString) {
     destinatario_nome: getText(dest, 'xNome'),
     destinatario_cnpj: getText(dest, 'CNPJ') || getText(dest, 'CPF'),
     
-    // 👇 AQUI ESTÃO OS CAMPOS NOVOS 👇
-    municipio: getText(dest, 'xMun'),
-    bairro: getText(dest, 'xBairro'),
-    // 👆 AQUI ESTÃO OS CAMPOS NOVOS 👆
+    // 👇 Busca focada no enderDest 👇
+    municipio: getText(enderDest, 'xMun'),
+    bairro: getText(enderDest, 'xBairro'),
+    // 👆 Busca focada no enderDest 👆
 
     valor_total: parseFloat(getText(total, 'vNF') || '0'),
     peso_bruto: pesoBruto,
