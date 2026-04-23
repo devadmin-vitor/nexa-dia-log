@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   ArrowLeft, AlertTriangle, CheckCircle2, Clock,
   FileText, Calendar, ShieldCheck, List, FileDown, Trash2,
-  Copy, CheckSquare, Map
+  Copy, CheckSquare, Map, Printer // Ícone da impressora adicionado aqui
 } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -357,8 +357,8 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
       const produtosNF = nf.itens || [];
 
       // Uso do NOVO extrator profundo para buscar xMun e xBairro ignorando rotas e arrays aninhados
-      const munVal = extractTag(nf, 'xMun');
-      const bairroVal = extractTag(nf, 'xBairro');
+      const munVal = extractTag(nf, 'xMun') || nf.municipio;
+      const bairroVal = extractTag(nf, 'xBairro') || nf.bairro;
 
       const municipio = decodeHTML(munVal || 'N/I');
       const bairro = decodeHTML(bairroVal || 'N/I');
@@ -442,6 +442,128 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
 
   doc.save(`Mapa_Separacao_Bonus_${bonus.numero_bonus}.pdf`);
 }
+
+// ─── MAPA DE EXPEDIÇÃO / ROMANEIO (Pronto para Impressão) ─────────────────────
+function gerarRomaneioPDF(bonus, notasVinculadas) {
+  if (!notasVinculadas || notasVinculadas.length === 0) {
+    toast.error("Nenhuma Nota Fiscal vinculada para gerar o romaneio.");
+    return;
+  }
+
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  const W = 297;
+  const H = 210;
+  const margin = 14;
+  const maxY = H - 20;
+  let y = margin;
+
+  const printHeader = () => {
+    doc.setFillColor(15, 23, 42); 
+    doc.rect(0, 0, W, 22, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(`Romaneio de Expedição - Bônus #${decodeHTML(bonus.numero_bonus)}`, margin, 10);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Impresso em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`, margin, 16);
+    y = 32;
+  };
+
+  const checkY = (need) => {
+    if (y + need > maxY) {
+      doc.addPage();
+      printHeader();
+    }
+  };
+
+  printHeader();
+
+  // Cabeçalho da Tabela
+  doc.setFillColor(226, 232, 240);
+  doc.rect(margin, y, W - margin * 2, 8, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+
+  // Posições das Colunas
+  const COL = {
+    nf: margin + 2,
+    dest: margin + 18,
+    peso: margin + 85,
+    valor: margin + 110,
+    mun: margin + 140,
+    bairro: margin + 175,
+    mot: margin + 225
+  };
+
+  doc.text('NF', COL.nf, y + 5.5);
+  doc.text('DESTINATÁRIO', COL.dest, y + 5.5);
+  doc.text('PESO (KG)', COL.peso, y + 5.5);
+  doc.text('VALOR', COL.valor, y + 5.5);
+  doc.text('MUNICÍPIO', COL.mun, y + 5.5);
+  doc.text('BAIRRO', COL.bairro, y + 5.5);
+  doc.text('MOTORISTA / ASSINATURA', COL.mot, y + 5.5);
+  y += 8;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(15, 23, 42);
+
+  let totalPeso = 0;
+  let totalValor = 0;
+
+  notasVinculadas.forEach((nf, idx) => {
+    checkY(10);
+    
+    // Efeito zebrado nas linhas
+    if (idx % 2 === 0) {
+      doc.setFillColor(248, 250, 252);
+      doc.rect(margin, y, W - margin * 2, 8, 'F');
+    }
+
+    const nfNum = String(nf.numero_nf || nf.nf || 'S/N');
+    const dest = doc.splitTextToSize(decodeHTML(nf.destinatario_nome || nf.razao_social_destinatario || 'N/I'), 65)[0];
+    
+    const peso = Number(nf.peso_bruto || 0);
+    const valor = Number(nf.valor_total || nf.valor || 0);
+    
+    totalPeso += peso;
+    totalValor += valor;
+
+    const mun = doc.splitTextToSize(decodeHTML(nf.municipio || extractTag(nf, 'xMun') || 'N/I'), 32)[0];
+    const bairro = doc.splitTextToSize(decodeHTML(nf.bairro || extractTag(nf, 'xBairro') || 'N/I'), 45)[0];
+
+    doc.setFontSize(8);
+    doc.text(nfNum, COL.nf, y + 5);
+    doc.text(dest, COL.dest, y + 5);
+    doc.text(peso.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }), COL.peso, y + 5);
+    doc.text(valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), COL.valor, y + 5);
+    doc.text(mun, COL.mun, y + 5);
+    doc.text(bairro, COL.bairro, y + 5);
+    
+    // Linha reta em branco para o motorista assinar/escrever
+    doc.setDrawColor(156, 163, 175);
+    doc.line(COL.mot, y + 5, W - margin - 2, y + 5);
+
+    y += 8;
+  });
+
+  // Linha final de Totais
+  checkY(15);
+  y += 2;
+  doc.setFillColor(226, 232, 240);
+  doc.rect(margin, y, W - margin * 2, 8, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('TOTAIS DO ROMANEIO:', COL.dest, y + 5.5);
+  doc.text(totalPeso.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' KG', COL.peso, y + 5.5);
+  doc.text(totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), COL.valor, y + 5.5);
+
+  // Gera o PDF na memória, abre nova aba e chama a impressora!
+  doc.autoPrint();
+  window.open(doc.output('bloburl'), '_blank');
+}
+
 
 // ─── Geração do PDF: RELATÓRIO GERAL (Antigo) ─────────────────────────────────────────
 function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas: true, avarias: true }, orientacao = 'portrait') {
@@ -817,6 +939,14 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
     gerarMapaSeparacao(bonus, notasVinculadas);
   };
 
+  const handleImprimirRomaneio = () => {
+    if (!notasVinculadas || notasVinculadas.length === 0) {
+      toast.error('Não há notas para gerar o Romaneio.');
+      return;
+    }
+    gerarRomaneioPDF(bonus, notasVinculadas);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -925,6 +1055,13 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
           </div>
 
           <div className="flex flex-wrap gap-2 sm:ml-auto w-full sm:w-auto">
+            {/* ADICIONE ESTE BOTÃO AQUI */}
+            <Button onClick={handleImprimirRomaneio} variant="outline" size="sm" className="gap-2 flex-1 sm:flex-none border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100">
+              <Printer className="w-4 h-4" />
+              Romaneio
+            </Button>
+            {/* ======================= */}
+
             <Button onClick={handleMapaSeparacao} variant="secondary" size="sm" className="gap-2 flex-1 sm:flex-none border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100">
               <Map className="w-4 h-4" />
               Mapa de Separação
