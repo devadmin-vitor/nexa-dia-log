@@ -80,6 +80,9 @@ export default function ImportarXML() {
           ...(pdfUrl ? { arquivo_pdf_url: pdfUrl } : {}),
         };
 
+        // 🚨 DEBUG CRUCIAL: Verificando o que está indo para o banco de dados 🚨
+        console.log(`[DEBUG NF-${nfData.numero_nf}] Payload enviado para a base44:`, payload);
+
         await base44.entities.NotaFiscal.create(payload);
 
         updateStatus(i, {
