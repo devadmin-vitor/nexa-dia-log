@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   ArrowLeft, AlertTriangle, CheckCircle2, Clock,
   FileText, Calendar, ShieldCheck, List, FileDown, Trash2,
-  Copy, CheckSquare, Map, Printer // Ícone da impressora adicionado aqui
+  Copy, CheckSquare, Map, Printer, FileSpreadsheet
 } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -443,7 +443,7 @@ function gerarMapaSeparacao(bonus, notasVinculadas) {
   doc.save(`Mapa_Separacao_Bonus_${bonus.numero_bonus}.pdf`);
 }
 
-// ─── MAPA DE EXPEDIÇÃO / ROMANEIO (Pronto para Impressão) ─────────────────────
+// ─── MAPA DE EXPEDIÇÃO / ROMANEIO (Pronto para Impressão em PDF) ─────────────
 function gerarRomaneioPDF(bonus, notasVinculadas) {
   if (!notasVinculadas || notasVinculadas.length === 0) {
     toast.error("Nenhuma Nota Fiscal vinculada para gerar o romaneio.");
@@ -486,7 +486,6 @@ function gerarRomaneioPDF(bonus, notasVinculadas) {
   doc.setFontSize(8);
   doc.setTextColor(71, 85, 105);
 
-  // Posições das Colunas
   const COL = {
     nf: margin + 2,
     dest: margin + 18,
@@ -515,7 +514,6 @@ function gerarRomaneioPDF(bonus, notasVinculadas) {
   notasVinculadas.forEach((nf, idx) => {
     checkY(10);
     
-    // Efeito zebrado nas linhas
     if (idx % 2 === 0) {
       doc.setFillColor(248, 250, 252);
       doc.rect(margin, y, W - margin * 2, 8, 'F');
@@ -541,14 +539,12 @@ function gerarRomaneioPDF(bonus, notasVinculadas) {
     doc.text(mun, COL.mun, y + 5);
     doc.text(bairro, COL.bairro, y + 5);
     
-    // Linha reta em branco para o motorista assinar/escrever
     doc.setDrawColor(156, 163, 175);
     doc.line(COL.mot, y + 5, W - margin - 2, y + 5);
 
     y += 8;
   });
 
-  // Linha final de Totais
   checkY(15);
   y += 2;
   doc.setFillColor(226, 232, 240);
@@ -559,9 +555,59 @@ function gerarRomaneioPDF(bonus, notasVinculadas) {
   doc.text(totalPeso.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' KG', COL.peso, y + 5.5);
   doc.text(totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }), COL.valor, y + 5.5);
 
-  // Gera o PDF na memória, abre nova aba e chama a impressora!
   doc.autoPrint();
   window.open(doc.output('bloburl'), '_blank');
+}
+
+// ─── ROMANEIO EM EXCEL (CSV) ───────────────────────────────────────────────────
+function gerarRomaneioExcel(bonus, notasVinculadas) {
+  if (!notasVinculadas || notasVinculadas.length === 0) {
+    toast.error("Nenhuma Nota Fiscal vinculada para gerar o romaneio.");
+    return;
+  }
+
+  // '\uFEFF' garante que o Excel do Windows abra com os acentos corretos (UTF-8)
+  let csvContent = "\uFEFF"; 
+  csvContent += "NF;DESTINATÁRIO;PESO (KG);VALOR;MUNICÍPIO;BAIRRO;MOTORISTA/ASSINATURA\n";
+
+  let totalPeso = 0;
+  let totalValor = 0;
+
+  notasVinculadas.forEach(nf => {
+    const nfNum = String(nf.numero_nf || nf.nf || 'S/N');
+    
+    // Remove quebras de linha e ponto-e-vírgulas (que desconfigurariam as células do Excel)
+    const dest = decodeHTML(nf.destinatario_nome || nf.razao_social_destinatario || 'N/I').replace(/[\r\n;]/g, ' ');
+    const mun = decodeHTML(nf.municipio || extractTag(nf, 'xMun') || 'N/I').replace(/[\r\n;]/g, ' ');
+    const bairro = decodeHTML(nf.bairro || extractTag(nf, 'xBairro') || 'N/I').replace(/[\r\n;]/g, ' ');
+
+    const peso = Number(nf.peso_bruto || 0);
+    const valor = Number(nf.valor_total || nf.valor || 0);
+    
+    totalPeso += peso;
+    totalValor += valor;
+
+    // Formatação pt-BR com vírgulas e pontos corretos
+    const pesoStr = peso.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const valorStr = valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // Envolve em aspas duplas para o Excel isolar o conteúdo de cada célula perfeitamente
+    csvContent += `"${nfNum}";"${dest}";"${pesoStr}";"R$ ${valorStr}";"${mun}";"${bairro}";""\n`;
+  });
+
+  const totalPesoStr = totalPeso.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const totalValorStr = totalValor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  csvContent += `"TOTAIS";"";"${totalPesoStr}";"R$ ${totalValorStr}";"";"";""\n`;
+
+  // Criação do arquivo para Download
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `Romaneio_Expedicao_Bonus_${bonus.numero_bonus}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 
@@ -947,6 +993,11 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
     gerarRomaneioPDF(bonus, notasVinculadas);
   };
 
+  // ─── NOVO HANDLER PARA O EXCEL ───
+  const handleExportarRomaneioExcel = () => {
+    gerarRomaneioExcel(bonus, notasVinculadas);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1032,7 +1083,7 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
         </div>
       )}
 
-      {/* ── Painel de exportação PDF ─────────── */}
+      {/* ── Painel de exportação PDF/Excel ─────────── */}
       <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
           <span>Relatórios e Exportações</span>
@@ -1055,12 +1106,17 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
           </div>
 
           <div className="flex flex-wrap gap-2 sm:ml-auto w-full sm:w-auto">
-            {/* ADICIONE ESTE BOTÃO AQUI */}
+            {/* BOTÃO ROMANEIO PDF */}
             <Button onClick={handleImprimirRomaneio} variant="outline" size="sm" className="gap-2 flex-1 sm:flex-none border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100">
               <Printer className="w-4 h-4" />
               Romaneio
             </Button>
-            {/* ======================= */}
+            
+            {/* NOVO BOTÃO EXCEL */}
+            <Button onClick={handleExportarRomaneioExcel} variant="outline" size="sm" className="gap-2 flex-1 sm:flex-none border-green-300 bg-green-50 text-green-700 hover:bg-green-100">
+              <FileSpreadsheet className="w-4 h-4" />
+              Excel
+            </Button>
 
             <Button onClick={handleMapaSeparacao} variant="secondary" size="sm" className="gap-2 flex-1 sm:flex-none border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100">
               <Map className="w-4 h-4" />
