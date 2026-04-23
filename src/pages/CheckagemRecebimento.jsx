@@ -161,7 +161,11 @@ if (bonusSelecionado) {
     return (
       <BonusDetalhado 
         bonus={bonusSelecionado} 
-        onVoltar={() => setBonusSelecionado(null)} 
+        onVoltar={() => {
+          setBonusSelecionado(null);
+          // Esta linha avisa a tela para buscar os dados frescos no banco!
+          queryClient.invalidateQueries({ queryKey: ['checagem-bonus'] });
+        }} 
       />
     );
   }
