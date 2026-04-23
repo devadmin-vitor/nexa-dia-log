@@ -6,7 +6,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   ArrowLeft, AlertTriangle, CheckCircle2, Clock,
   FileText, Calendar, ShieldCheck, List, FileDown, Trash2,
-  Copy, CheckSquare,
+  Copy, CheckSquare, Map
 } from 'lucide-react';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -76,7 +76,7 @@ function ItensTable({ itens, titulo, cor }) {
                 <td className="px-3 py-2 text-center tabular-nums">
                   {item.validade ? format(new Date(item.validade), 'dd/MM/yyyy') : <span className="text-muted-foreground/50">—</span>}
                 </td>
-                <td className="px-3 py-2 text-center font-bold tabular-nums">{(item.qtd_caixas || 0).toLocaleString('pt-BR')}</td>
+                <td className="px-3 py-2 text-center font-bold tabular-nums">{(item.qtd_caixas || item.qtd_esperada || 0).toLocaleString('pt-BR')}</td>
                 <td className="px-3 py-2 text-center text-muted-foreground">{item.qtd_paletes || '—'}</td>
                 <td className="px-3 py-2 text-center">
                   <Badge className="text-[9px] bg-emerald-100 text-emerald-700 border border-emerald-200">BOM</Badge>
@@ -90,7 +90,7 @@ function ItensTable({ itens, titulo, cor }) {
                 <td className="px-3 py-2 text-center tabular-nums">
                   {item.validade ? format(new Date(item.validade), 'dd/MM/yyyy') : <span className="text-muted-foreground/50">—</span>}
                 </td>
-                <td className="px-3 py-2 text-center font-bold tabular-nums text-red-600">{(item.qtd_caixas || 0).toLocaleString('pt-BR')}</td>
+                <td className="px-3 py-2 text-center font-bold tabular-nums text-red-600">{(item.qtd_caixas || item.qtd_esperada || 0).toLocaleString('pt-BR')}</td>
                 <td className="px-3 py-2 text-center text-muted-foreground">{item.qtd_paletes || '—'}</td>
                 <td className="px-3 py-2 text-center">
                   <Badge className="text-[9px] bg-red-100 text-red-700 border border-red-200 gap-1">
@@ -102,11 +102,11 @@ function ItensTable({ itens, titulo, cor }) {
           </tbody>
         </table>
         <div className="px-3 py-2 bg-muted/30 border-t border-border flex items-center justify-end gap-6 text-xs">
-          <span>Total Boas: <span className="font-bold">{itensBons.reduce((a, i) => a + (i.qtd_caixas || 0), 0).toLocaleString('pt-BR')} cx</span></span>
+          <span>Total Boas: <span className="font-bold">{itensBons.reduce((a, i) => a + (i.qtd_caixas || i.qtd_esperada || 0), 0).toLocaleString('pt-BR')} cx</span></span>
           {itensAvaria.length > 0 && (
-            <span className="text-red-600">Total Avarias: <span className="font-bold">{itensAvaria.reduce((a, i) => a + (i.qtd_caixas || 0), 0).toLocaleString('pt-BR')} cx</span></span>
+            <span className="text-red-600">Total Avarias: <span className="font-bold">{itensAvaria.reduce((a, i) => a + (i.qtd_caixas || i.qtd_esperada || 0), 0).toLocaleString('pt-BR')} cx</span></span>
           )}
-          <span className="font-semibold">Total Geral: <span>{itens.reduce((a, i) => a + (i.qtd_caixas || 0), 0).toLocaleString('pt-BR')} cx</span></span>
+          <span className="font-semibold">Total Geral: <span>{itens.reduce((a, i) => a + (i.qtd_caixas || i.qtd_esperada || 0), 0).toLocaleString('pt-BR')} cx</span></span>
         </div>
       </div>
     </div>
@@ -219,7 +219,122 @@ function DivergenciasSection({ bonus }) {
   );
 }
 
-// ─── Geração do PDF ───────────────────────────────────────────────────────────
+// ─── Geração do PDF: MAPA DE SEPARAÇÃO ─────────────────────────────────────────
+function gerarMapaSeparacao(bonus, itensRef) {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  const W = 210;
+  const H = 297;
+  const margin = 14;
+  const maxY = H - 20;
+  let y = margin;
+
+  const newPage = () => { doc.addPage(); y = margin + 5; };
+  const checkY = (need) => { if (y + need > maxY) newPage(); };
+
+  // Agrupar Itens: NF -> Rota -> Cliente
+  const grupos = {};
+  itensRef.forEach(item => {
+    // Fallbacks para garantir que campos não fiquem vazios (Ajuste os nomes conforme seu banco de dados)
+    const nf = item.numero_nf || item.nf || 'S/N';
+    const rota = item.rota || 'Rota Não Definida';
+    const cliente = item.cliente_nome || item.cliente || 'Cliente Padrão';
+
+    if (!grupos[nf]) grupos[nf] = {};
+    if (!grupos[nf][rota]) grupos[nf][rota] = {};
+    if (!grupos[nf][rota][cliente]) grupos[nf][rota][cliente] = [];
+
+    grupos[nf][rota][cliente].push(item);
+  });
+
+  // Cabeçalho Principal
+  doc.setFillColor(30, 64, 175); // Azul escuro
+  doc.rect(0, 0, W, 22, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.text(`Mapa de Separação - Bônus #${bonus.numero_bonus}`, margin, 10);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Gerado em ${format(new Date(), "dd/MM/yyyy 'às' HH:mm")}`, margin, 16);
+  doc.setTextColor(0, 0, 0);
+  y = 30;
+
+  // Renderizar os grupos
+  Object.keys(grupos).forEach(nf => {
+    Object.keys(grupos[nf]).forEach(rota => {
+      Object.keys(grupos[nf][rota]).forEach(cliente => {
+        const itens = grupos[nf][rota][cliente];
+        
+        checkY(35);
+        
+        // Cabeçalho do Grupo (NF, Rota, Cliente)
+        doc.setFillColor(240, 244, 248);
+        doc.roundedRect(margin, y, W - margin * 2, 18, 2, 2, 'F');
+        
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.setTextColor(30, 58, 138); // Azul forte
+        doc.text(`NF: ${nf}   |   Rota: ${rota}`, margin + 4, y + 6);
+        
+        doc.setFontSize(11);
+        doc.setTextColor(15, 23, 42); // Quase preto
+        doc.text(`Cliente: ${cliente}`, margin + 4, y + 13);
+        y += 22;
+
+        // Cabeçalho da Tabela
+        doc.setFillColor(226, 232, 240);
+        doc.rect(margin, y, W - margin * 2, 6, 'F');
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(71, 85, 105);
+        doc.text('EAN', margin + 2, y + 4);
+        doc.text('DESCRIÇÃO DO PRODUTO', margin + 35, y + 4);
+        doc.text('QTD CX', W - margin - 20, y + 4, { align: 'right' });
+        y += 6;
+
+        // Linhas de Itens
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(15, 23, 42);
+        
+        let totalCaixas = 0;
+
+        itens.forEach((item, idx) => {
+          checkY(8);
+          if (idx % 2 === 0) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(margin, y, W - margin * 2, 6, 'F');
+          }
+          
+          const qtd = Number(item.qtd_caixas || item.qtd_esperada || 0);
+          totalCaixas += qtd;
+
+          doc.text(String(item.ean || '—'), margin + 2, y + 4);
+          doc.text(doc.splitTextToSize(String(item.descricao || '—'), 110)[0], margin + 35, y + 4);
+          doc.setFont('helvetica', 'bold');
+          doc.text(qtd.toLocaleString('pt-BR'), W - margin - 5, y + 4, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          
+          y += 6;
+        });
+
+        // Rodapé do Grupo (Totais)
+        checkY(10);
+        doc.setFillColor(241, 245, 249);
+        doc.rect(margin, y, W - margin * 2, 7, 'F');
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8);
+        doc.text('Total a separar deste cliente:', margin + 2, y + 4.5);
+        doc.text(`${totalCaixas.toLocaleString('pt-BR')} cx`, W - margin - 5, y + 4.5, { align: 'right' });
+        
+        y += 12; // Espaço para o próximo bloco
+      });
+    });
+  });
+
+  doc.save(`Mapa_Separacao_Bonus_${bonus.numero_bonus}.pdf`);
+}
+
+// ─── Geração do PDF: RELATÓRIO NORMAL ─────────────────────────────────────────
 function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas: true, avarias: true }, orientacao = 'portrait') {
   const isLandscape = orientacao === 'landscape';
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: orientacao });
@@ -480,13 +595,12 @@ function gerarPDF(bonus, notasVinculadas = [], filtros = { sobras: true, faltas:
     }
   }
 
-  doc.save(`Bonus_${bonus.numero_bonus}_Relatorio.pdf`);
+  doc.save(`Relatorio_Bonus_${bonus.numero_bonus}.pdf`);
 }
 
 // ─── Componente principal ────────────────────────────────────────────────────
 export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
   
-  // 1. TRAVA DE SEGURANÇA ADICIONADA AQUI (Evita o Crash da tela branca)
   if (!bonus) {
     return (
       <div className="flex flex-col items-center justify-center p-12 space-y-4">
@@ -505,9 +619,7 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
   const [authReplicacaoOpen, setAuthReplicacaoOpen] = useState(false);
   const [replicando, setReplicando] = useState(false);
   
-  // Estado para Forçar Conclusão
   const [authForceCompleteOpen, setAuthForceCompleteOpen] = useState(false);
-
   const [notasVinculadas, setNotasVinculadas] = useState([]);
 
   // Filtros do PDF
@@ -527,8 +639,8 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
 
   const itens1 = bonus.itens_conferidos || [];
   const itens2 = bonus.itens_conferidos_2 || [];
-  const totalCx1 = itens1.reduce((a, i) => a + (i.qtd_caixas || 0), 0);
-  const totalCx2 = itens2.reduce((a, i) => a + (i.qtd_caixas || 0), 0);
+  const totalCx1 = itens1.reduce((a, i) => a + (i.qtd_caixas || i.qtd_esperada || 0), 0);
+  const totalCx2 = itens2.reduce((a, i) => a + (i.qtd_caixas || i.qtd_esperada || 0), 0);
   const totalEsp = (bonus.itens_esperados || []).reduce((a, i) => a + (i.qtd_esperada || 0), 0);
   const temAvaria1 = itens1.some(i => i.tipo_estoque === 'AVARIA');
   const temAvaria2 = itens2.some(i => i.tipo_estoque === 'AVARIA');
@@ -551,7 +663,6 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
     }
   };
 
-  // Função para Forçar Conclusão (Admin)
   const handleForcarConclusao = async () => {
     try {
       const itensForcados = (bonus.itens_esperados || []).map(item => ({
@@ -589,6 +700,20 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
     );
   };
 
+  // Botão NOVO: Mapa de Separação
+  const handleMapaSeparacao = () => {
+    // Escolhe a lista de itens mais atualizada para gerar o mapa
+    const itensParaMapa = bonus.itens_conferidos_2?.length > 0 
+      ? bonus.itens_conferidos_2 
+      : (bonus.itens_conferidos?.length > 0 ? bonus.itens_conferidos : bonus.itens_esperados || []);
+      
+    if (itensParaMapa.length === 0) {
+      toast.error('Nenhum item encontrado neste bônus para gerar o mapa.');
+      return;
+    }
+    gerarMapaSeparacao(bonus, itensParaMapa);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -609,8 +734,6 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
           <p className="text-sm text-muted-foreground mt-0.5">{bonus.emitente_nome || '—'}</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          
-          {/* Botão Forçar Conclusão */}
           {bonus.status !== 'conferido' && (
             <Button
               variant="outline"
@@ -640,7 +763,6 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
         </div>
       </div>
 
-      {/* Dialog de confirmação de risco (Replicação) */}
       <AlertDialog open={confirmReplicacaoOpen} onOpenChange={setConfirmReplicacaoOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -665,38 +787,10 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Dialog de credenciais admin para replicação */}
-      <AdminAuthDialog
-        open={authReplicacaoOpen}
-        onOpenChange={setAuthReplicacaoOpen}
-        title="Autenticação — Replicação"
-        description="Confirme suas credenciais de administrador para replicar a 1ª conferência."
-        onAuthorized={handleReplicar}
-      />
+      <AdminAuthDialog open={authReplicacaoOpen} onOpenChange={setAuthReplicacaoOpen} title="Autenticação — Replicação" description="Confirme suas credenciais de administrador para replicar a 1ª conferência." onAuthorized={handleReplicar} />
+      <AdminAuthDialog open={authForceCompleteOpen} onOpenChange={setAuthForceCompleteOpen} title="Forçar Conclusão" description="Esta ação marcará o bônus como 100% conferido. Confirme suas credenciais de administrador." onAuthorized={handleForcarConclusao} />
+      <AdminAuthDialog open={authDeleteOpen} onOpenChange={setAuthDeleteOpen} title="Excluir Bônus" description="Esta ação é irreversível. Confirme suas credenciais de administrador para excluir este bônus e liberar as NFs vinculadas." onAuthorized={async () => { await base44.entities.BonusRecebimento.delete(bonus.id); onDeleted?.(); onVoltar(); }} />
 
-      {/* Dialog de credenciais admin para Forçar Conclusão */}
-      <AdminAuthDialog
-        open={authForceCompleteOpen}
-        onOpenChange={setAuthForceCompleteOpen}
-        title="Forçar Conclusão"
-        description="Esta ação marcará o bônus como 100% conferido. Confirme suas credenciais de administrador."
-        onAuthorized={handleForcarConclusao}
-      />
-
-      {/* Dialog para Exclusão */}
-      <AdminAuthDialog
-        open={authDeleteOpen}
-        onOpenChange={setAuthDeleteOpen}
-        title="Excluir Bônus"
-        description="Esta ação é irreversível. Confirme suas credenciais de administrador para excluir este bônus e liberar as NFs vinculadas."
-        onAuthorized={async () => {
-          await base44.entities.BonusRecebimento.delete(bonus.id);
-          onDeleted?.();
-          onVoltar();
-        }}
-      />
-
-      {/* NFs Vinculadas */}
       {notasVinculadas.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {notasVinculadas.map(nf => (
@@ -705,57 +799,40 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
         </div>
       )}
 
-      {/* ── Painel de exportação PDF ─────────────────────────────────────── */}
+      {/* ── Painel de exportação PDF (AGORA COM MAPA DE SEPARAÇÃO) ─────────── */}
       <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Exportar PDF</p>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center justify-between">
+          <span>Relatórios e Exportações</span>
+        </p>
 
-        <div className="flex flex-wrap items-center gap-4">
-          {/* Filtros de conteúdo */}
+        <div className="flex flex-col sm:flex-row flex-wrap items-center gap-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Incluir:</span>
-            <RoundToggle
-              checked={filtroSobras}
-              onChange={setFiltroSobras}
-              label="Sobra(s)"
-              colorClass="bg-orange-50 text-orange-600 border-orange-400"
-            />
-            <RoundToggle
-              checked={filtroFaltas}
-              onChange={setFiltroFaltas}
-              label="Falta(s)"
-              colorClass="bg-red-50 text-red-600 border-red-400"
-            />
-            <RoundToggle
-              checked={filtroAvarias}
-              onChange={setFiltroAvarias}
-              label="Avaria(s)"
-              colorClass="bg-purple-50 text-purple-600 border-purple-400"
-            />
+            <span className="text-xs text-muted-foreground">Incluir no Relatório:</span>
+            <RoundToggle checked={filtroSobras} onChange={setFiltroSobras} label="Sobra(s)" colorClass="bg-orange-50 text-orange-600 border-orange-400" />
+            <RoundToggle checked={filtroFaltas} onChange={setFiltroFaltas} label="Falta(s)" colorClass="bg-red-50 text-red-600 border-red-400" />
+            <RoundToggle checked={filtroAvarias} onChange={setFiltroAvarias} label="Avaria(s)" colorClass="bg-purple-50 text-purple-600 border-purple-400" />
           </div>
 
           <div className="w-px h-6 bg-border hidden sm:block" />
 
-          {/* Orientação */}
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Layout:</span>
-            <RoundToggle
-              checked={orientacao === 'portrait'}
-              onChange={(v) => v && setOrientacao('portrait')}
-              label="Vertical"
-              colorClass="bg-blue-50 text-blue-600 border-blue-400"
-            />
-            <RoundToggle
-              checked={orientacao === 'landscape'}
-              onChange={(v) => v && setOrientacao('landscape')}
-              label="Horizontal"
-              colorClass="bg-blue-50 text-blue-600 border-blue-400"
-            />
+            <RoundToggle checked={orientacao === 'portrait'} onChange={(v) => v && setOrientacao('portrait')} label="Vertical" colorClass="bg-blue-50 text-blue-600 border-blue-400" />
+            <RoundToggle checked={orientacao === 'landscape'} onChange={(v) => v && setOrientacao('landscape')} label="Horizontal" colorClass="bg-blue-50 text-blue-600 border-blue-400" />
           </div>
 
-          <Button onClick={handleExportarPDF} size="sm" className="gap-2 ml-auto">
-            <FileDown className="w-4 h-4" />
-            Exportar PDF
-          </Button>
+          <div className="flex flex-wrap gap-2 sm:ml-auto w-full sm:w-auto">
+            {/* NOVO BOTÃO: Mapa de Separação */}
+            <Button onClick={handleMapaSeparacao} variant="secondary" size="sm" className="gap-2 flex-1 sm:flex-none border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100">
+              <Map className="w-4 h-4" />
+              Mapa de Separação
+            </Button>
+            
+            <Button onClick={handleExportarPDF} size="sm" className="gap-2 flex-1 sm:flex-none">
+              <FileDown className="w-4 h-4" />
+              Relatório Geral
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -841,7 +918,7 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
       {(() => {
         const confRef = itens2.length ? itens2 : itens1;
         const confPorDesc = {};
-        confRef.forEach(i => { confPorDesc[i.descricao] = (confPorDesc[i.descricao] || 0) + (i.qtd_caixas || 0); });
+        confRef.forEach(i => { confPorDesc[i.descricao] = (confPorDesc[i.descricao] || 0) + (i.qtd_caixas || i.qtd_esperada || 0); });
         const pendentes = (bonus.itens_esperados || [])
           .map(item => ({ ...item, conferido: confPorDesc[item.descricao] || 0, pendente: (item.qtd_esperada || 0) - (confPorDesc[item.descricao] || 0) }))
           .filter(item => item.pendente > 0);
@@ -871,9 +948,9 @@ export default function BonusDetalhado({ bonus, onVoltar, onDeleted }) {
                     <tr key={i} className="hover:bg-orange-50/50">
                       <td className="px-3 py-2 font-mono text-muted-foreground">{item.ean || '—'}</td>
                       <td className="px-3 py-2 font-medium">{item.descricao || '—'}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{item.qtd_esperada.toLocaleString('pt-BR')}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{item.conferido.toLocaleString('pt-BR')}</td>
-                      <td className="px-3 py-2 text-right font-bold tabular-nums text-red-600">-{item.pendente.toLocaleString('pt-BR')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{(item.qtd_esperada || 0).toLocaleString('pt-BR')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{(item.conferido || 0).toLocaleString('pt-BR')}</td>
+                      <td className="px-3 py-2 text-right font-bold tabular-nums text-red-600">-{(item.pendente || 0).toLocaleString('pt-BR')}</td>
                     </tr>
                   ))}
                 </tbody>
