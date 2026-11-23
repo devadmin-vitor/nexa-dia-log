@@ -85,7 +85,8 @@ def check_n8n() -> dict:
 def check_claude() -> dict:
     s = get_settings()
     if not s.anthropic_api_key.get_secret_value():
-        return _result("claude", "Claude API", "not_configured", "ANTHROPIC_API_KEY ausente")
+        return _result("claude", "Claude API", "not_configured",
+                       "Desativada por decisão: análise e escrita são feitas no Claude Cowork (sem custo de API)")
     if not s.claude_model:
         return _result("claude", "Claude API", "not_configured", "CLAUDE_MODEL ausente")
     if s.usd_brl_rate <= 0:

@@ -8,10 +8,10 @@ import { fmtBRL, fmtInt, SERVICE_STATUS } from "@/lib/format";
 import type { Overview, ServicesHealth } from "@/lib/types";
 
 const SPRINTS = [
-  { n: 1, name: "Infraestrutura", items: "Docker, Supabase, FastAPI, n8n, Next.js, saúde dos serviços", status: "em entrega" },
-  { n: 2, name: "Inteligência", items: "Claude API nos agentes, orquestrador, worker da fila, pesquisa de produtos", status: "próxima" },
-  { n: 3, name: "Fábrica audiovisual", items: "Roteiros, voz (TTS local), templates, legendas, FFmpeg/Remotion", status: "planejada" },
-  { n: 4, name: "Gestão", items: "Relatórios, financeiro, conciliação, alertas", status: "planejada" },
+  { n: 1, name: "Infraestrutura", items: "Docker, Supabase, FastAPI, n8n, Next.js, saúde dos serviços", status: "entregue" },
+  { n: 2, name: "Inteligência automática", items: "Agentes executando pela API — fora do escopo: análise e escrita feitas no Cowork", status: "não será feita" },
+  { n: 3, name: "Fábrica audiovisual", items: "Roteiros, voz (TTS local), templates, legendas, FFmpeg/Remotion", status: "a decidir" },
+  { n: 4, name: "Gestão", items: "Relatórios, financeiro, conciliação, alertas", status: "a decidir" },
   { n: 5, name: "TikTok", items: "Integrações autorizadas, publicação, acompanhamento de afiliados", status: "depende de aprovação" },
 ];
 
@@ -98,7 +98,7 @@ async function OverviewContent() {
               </div>
               <p className="mt-1 text-xs text-muted">{s.items}</p>
               <div className="mt-2">
-                <Badge tone={s.n === 1 ? "accent" : "neutral"}>{s.status}</Badge>
+                <Badge tone={s.n === 1 ? "ok" : "neutral"}>{s.status}</Badge>
               </div>
             </li>
           ))}

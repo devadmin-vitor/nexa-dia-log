@@ -5,9 +5,12 @@ uma única aplicação com um **orquestrador** e **seis agentes especializados**
 automação (n8n) e dashboard (Next.js). Tudo roda no seu computador; a internet só é usada para serviços externos
 autorizados (Claude API e, após aprovação, TikTok).
 
-> **Estado atual: Sprint 1 — Infraestrutura.** Os serviços sobem, o banco está migrado, os sete agentes estão
-> registrados e o dashboard mostra dados reais do banco (sem dados fictícios). Os agentes ainda **não executam**
-> tarefas com a Claude API — isso é a Sprint 2. Progresso detalhado em [`docs/PROGRESS.md`](docs/PROGRESS.md).
+> **Estado atual: Sprint 1 — Infraestrutura entregue.** Os serviços sobem, o banco está migrado, os sete agentes
+> estão registrados e o dashboard mostra dados reais do banco (sem dados fictícios).
+>
+> **Modo de operação: assistido pelo Claude Cowork.** Por decisão do operador, os agentes **não** chamam a Claude
+> API (nem outra IA): análise e escrita são feitas no Cowork, incluído no plano Claude, sem custo de API. Veja
+> [`docs/COWORK.md`](docs/COWORK.md) e [`docs/PROGRESS.md`](docs/PROGRESS.md).
 
 ```
 claude-commerce-ai/
@@ -87,7 +90,7 @@ Pode ser executado de novo sem sobrescrever valores existentes.
 Os workflows chamam `http://host.docker.internal:8000`. Se o container não alcançar a API (raro no Docker Desktop),
 inicie com `.\scripts\start.ps1 -ApiHost 0.0.0.0` e mantenha o Firewall do Windows bloqueando a porta 8000 para a rede.
 
-### 5. Claude API (opcional nesta sprint)
+### 5. Claude API (desativada — só se mudar de ideia no futuro)
 Preencha no `.env`: `ANTHROPIC_API_KEY`, `CLAUDE_MODEL` (padrão `claude-opus-5-5`) e **`USD_BRL_RATE`** — sem a cotação
 o controle de custos não consegue medir o gasto em reais e bloqueia chamadas pagas. Reinicie a API e use
 **Sistema → Testar conexão**. Só então a integração conta como verificada.

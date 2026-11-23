@@ -1,5 +1,8 @@
 # Operação assistida com Claude Cowork
 
+**Modo escolhido:** toda a análise e escrita (pesquisa de produtos, roteiros, revisão de conformidade, relatórios)
+é feita no Claude Cowork, incluído no plano Claude. O sistema local não chama nenhuma API de IA.
+
 O Cowork apoia o operador; ele **não** recebe tokens da API nem acesso direto ao banco, e não executa gastos.
 
 ## Rotina diária (Sprint 1)

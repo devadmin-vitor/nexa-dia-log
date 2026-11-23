@@ -17,7 +17,13 @@ Regra: nenhuma etapa é marcada como concluída sem os testes correspondentes ex
 
 Validação pendente (precisa do seu computador): rodar `setup.ps1` → `start.ps1` → `health.ps1` no Windows.
 
-## Sprint 2 — Inteligência (próxima)
+## Decisão de escopo (23/11/2026)
+Operação **assistida pelo Claude Cowork**, incluído no plano Claude do operador. Os agentes **não** chamam a
+Claude API nem outro provedor de IA: não há custo de API. O sistema organiza a operação (produtos, tarefas,
+aprovações, auditoria, agendamentos) e o Cowork faz a análise e a escrita. A Sprint 2 abaixo **não será feita**;
+o código do `core/claude_client.py` permanece desligado (sem `ANTHROPIC_API_KEY`) e pode ser reativado no futuro.
+
+## Sprint 2 — Inteligência automática (não será feita)
 - [ ] Worker da fila (processo Python nativo no Windows) com limite de paralelismo do orquestrador
 - [ ] Execução dos agentes com `ClaudeClient` e schemas Pydantic por tarefa
 - [ ] Ferramentas autorizadas (product_score, save_product, trend_analysis…) com auditoria
@@ -25,12 +31,12 @@ Validação pendente (precisa do seu computador): rodar `setup.ps1` → `start.p
 - [ ] Caçador de Produtos: normalização, pontuação, ranking (fontes autorizadas / relatórios importados)
 - [ ] Uso do Redis para locks e limite de taxa
 
-## Sprint 3 — Fábrica audiovisual
+## Sprint 3 — Fábrica audiovisual (a decidir)
 - [ ] Roteiros com três variações; regras de conformidade (reaproveitar Fase 1)
 - [ ] TTS local, legendas, templates Remotion, montagem FFmpeg 9:16
 - [ ] Auditoria de vídeo e fila de aprovação
 
-## Sprint 4 — Gestão
+## Sprint 4 — Gestão (a decidir)
 - [ ] Relatórios, financeiro (estimada × confirmada × paga × estornada), conciliação, alertas
 - [ ] Monitoramento de custos com projeção mensal
 
