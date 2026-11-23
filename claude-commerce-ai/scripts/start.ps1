@@ -22,6 +22,9 @@ New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null
 
 Write-Step 'Docker'
 if (-not (Test-DockerRunning)) { throw 'Docker Desktop não está em execução. Abra o Docker Desktop e tente novamente.' }
+$null = Resolve-ComposePort 'redis' 'REDIS_HOST_PORT' 6379 'REDIS_URL' $envValues
+$null = Resolve-ComposePort 'n8n' 'N8N_HOST_PORT' 5678 'N8N_URL' $envValues
+$envValues = Read-DotEnv
 if ((Invoke-Native 'docker' @('compose', 'up', '-d')) -ne 0) {
     $redisPort = if ($envValues['REDIS_HOST_PORT']) { $envValues['REDIS_HOST_PORT'] } else { '6379' }
     $n8nPort = if ($envValues['N8N_HOST_PORT']) { $envValues['N8N_HOST_PORT'] } else { '5678' }

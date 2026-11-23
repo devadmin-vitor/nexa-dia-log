@@ -105,6 +105,47 @@ function Invoke-Checked([string]$File, [string[]]$Arguments, [string]$What) {
     if ($code -ne 0) { throw "$What falhou (código $code)" }
 }
 
+# Porta livre no computador? Usa Get-NetTCPConnection (Windows) e confirma tentando abrir a porta.
+function Test-PortFree([int]$Port) {
+    if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
+        if (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue) { return $false }
+    }
+    $listener = $null
+    try {
+        $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Any, $Port)
+        $listener.Start()
+        return $true
+    } catch {
+        return $false
+    } finally {
+        if ($listener) { $listener.Stop() }
+    }
+}
+
+function Find-FreePort([int]$Start, [int]$Count = 30) {
+    for ($p = $Start; $p -lt ($Start + $Count); $p++) {
+        if (Test-PortFree $p) { return $p }
+    }
+    return $null
+}
+
+# Garante que a porta de um serviço do docker-compose esteja livre; se outra aplicação a usa,
+# escolhe a próxima livre e grava no .env (porta do host e URL de conexão).
+function Resolve-ComposePort([string]$Service, [string]$PortKey, [int]$Default, [string]$UrlKey, [hashtable]$EnvValues) {
+    $port = if ($EnvValues[$PortKey]) { [int]$EnvValues[$PortKey] } else { $Default }
+    # Se o próprio container do projeto já está rodando, a porta ocupada é dele.
+    $running = Get-NativeOutput 'docker' @('compose', 'ps', '--status', 'running', '-q', $Service)
+    if ($running) { return $port }
+    if (Test-PortFree $port) { return $port }
+    $new = Find-FreePort ($port + 1)
+    if (-not $new) { throw "Porta $port ocupada e nenhuma porta livre encontrada após ela para $Service." }
+    Set-DotEnvValue $PortKey "$new"
+    $url = (Read-DotEnv)[$UrlKey]
+    if ($url) { Set-DotEnvValue $UrlKey ($url -replace ":$port(/|$)", ":$new`$1") }
+    Write-Warn "Porta $port ocupada por outro programa: $Service passa a usar a porta $new ($PortKey e $UrlKey atualizados no .env)."
+    return $new
+}
+
 function Test-DockerRunning {
     return ((Invoke-Native 'docker' @('info') -Quiet) -eq 0)
 }
