@@ -1,0 +1,100 @@
+# Registro central dos agentes do Claude Commerce AI.
+# O backend sincroniza este arquivo (e agents/<pasta>/system_prompt.md) com a tabela public.agents
+# na inicialização. Ferramentas não listadas aqui são negadas pelo core/permissions.py.
+
+project:
+  name: claude-commerce-ai
+  brand_name: ${BRAND_NAME}
+  country: BR
+  currency: BRL
+  niche: technology
+  model: affiliate
+  content_style: faceless
+
+orchestrator:
+  id: operations_director
+  folder: orchestrator
+  name: Diretor de Operações
+  role: Orquestrador central — distribui tarefas, aplica limites e consolida resultados.
+  enabled: true
+  max_parallel_agents: 3
+  daily_task_limit: 40
+  tools:
+    - create_task
+    - read_task_status
+    - request_approval
+  approval_required: false
+
+agents:
+  - id: product_hunter
+    folder: product_hunter
+    name: Caçador de Produtos
+    role: Encontra, normaliza e pontua produtos de fontes autorizadas.
+    enabled: true
+    tools:
+      - product_search
+      - product_score
+      - save_product
+    approval_required: false
+
+  - id: trend_intelligence
+    folder: trend_intelligence
+    name: Inteligência de Tendências
+    role: Analisa tendências, palavras-chave e desempenho de conteúdos.
+    enabled: true
+    tools:
+      - web_research
+      - trend_analysis
+      - keyword_analysis
+    approval_required: false
+
+  - id: creative_director
+    folder: creative_director
+    name: Diretor Criativo
+    role: Cria roteiros, narração e vídeos verticais sem rosto.
+    enabled: true
+    tools:
+      - generate_script
+      - generate_voiceover
+      - render_video
+    approval_required: false
+
+  - id: publishing_manager
+    folder: publishing_manager
+    name: Gerente de Publicação
+    role: Valida vídeos e prepara publicações — sempre com aprovação humana.
+    enabled: true
+    tools:
+      - validate_video
+      - create_publication
+      - update_publication
+    approval_required: true
+
+  - id: finance_controller
+    folder: finance_controller
+    name: Controlador Financeiro
+    role: Concilia pedidos e comissões, calcula resultado e custos.
+    enabled: true
+    tools:
+      - read_commissions
+      - calculate_profit
+      - generate_report
+    approval_required: false
+
+  - id: compliance_auditor
+    folder: compliance_auditor
+    name: Auditor de Conformidade
+    role: Verifica conteúdo, divulgação comercial e direitos; pode bloquear publicações.
+    enabled: true
+    tools:
+      - check_content
+      - verify_disclosure
+      - block_publication
+    approval_required: false
+
+security:
+  emergency_stop: true
+  require_audit_log: true
+  prohibit_unapproved_spending: true
+  prohibit_unauthorized_scraping: true
+  protect_api_keys: true

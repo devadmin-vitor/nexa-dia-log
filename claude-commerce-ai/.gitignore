@@ -1,0 +1,31 @@
+# Segredos
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Node / Next
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Dados locais e gerados
+backups/
+logs/*
+!logs/.gitkeep
+storage/*
+!storage/.gitkeep
+media/**/*
+!media/**/.gitkeep
+!media/*/
+
+# Pasta de trabalho do Claude Cowork (dados do negócio; não versionar)
+cowork/
