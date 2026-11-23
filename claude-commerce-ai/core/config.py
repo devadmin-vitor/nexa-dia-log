@@ -42,8 +42,8 @@ class Settings(BaseSettings):
     daily_api_budget_brl: float = Field(default=4.0, ge=0)
 
     # Serviços locais
-    database_url: SecretStr = SecretStr("postgresql://postgres:postgres@127.0.0.1:54322/postgres")
-    supabase_url: str = "http://127.0.0.1:54321"
+    database_url: SecretStr = SecretStr("postgresql://postgres:postgres@127.0.0.1:44322/postgres")
+    supabase_url: str = "http://127.0.0.1:44321"
     supabase_anon_key: SecretStr = SecretStr("")
     supabase_service_role_key: SecretStr = SecretStr("")
     redis_url: SecretStr = SecretStr("redis://localhost:6379/0")

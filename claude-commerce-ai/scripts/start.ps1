@@ -42,7 +42,7 @@ foreach ($pair in @(@('ANON_KEY', 'SUPABASE_ANON_KEY'), @('SERVICE_ROLE_KEY', 'S
         Set-DotEnvValue $pair[1] $Matches[1] -OnlyIfEmpty
     }
 }
-Write-Ok 'Supabase ativo (Studio: http://127.0.0.1:54323)'
+Write-Ok 'Supabase ativo (Studio: http://127.0.0.1:44323)'
 
 Write-Step "API FastAPI em http://${ApiHost}:${ApiPort}"
 $py = Get-PythonExe

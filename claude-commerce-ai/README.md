@@ -40,11 +40,17 @@ toda leitura/gravação passa pelas funções do `core/`. Detalhes em [`docs/ARC
 |---|---|---|
 | Dashboard (Next.js) | nativo (Node) | http://localhost:3000 |
 | API (FastAPI) | nativo (Python .venv) | http://127.0.0.1:8000 · docs em `/docs` |
-| Supabase (Postgres 17 + Auth + Studio) | Docker, via Supabase CLI | API :54321 · DB :54322 · Studio :54323 |
+| Supabase (Postgres 17 + Auth + Studio) | Docker, via Supabase CLI | API :44321 · DB :44322 · Studio :44323 |
 | n8n | Docker Compose | http://localhost:5678 |
 | Redis | Docker Compose | 127.0.0.1:6379 (com senha) |
 
-Todas as portas ficam presas a `127.0.0.1`. **Não exponha** Supabase, n8n, Redis ou a API à internet.
+API, dashboard, n8n e Redis ficam presos a `127.0.0.1`. O **Supabase CLI publica suas portas em `0.0.0.0`** (visíveis
+na rede local): rode uma vez `scripts\firewall.ps1` como Administrador para bloqueá-las para outros aparelhos.
+**Não exponha** nenhum desses serviços à internet.
+
+As portas do Supabase foram movidas de 543xx para **443xx**: no Windows, o Hyper-V/WSL reserva faixas de portas
+altas e a 54322 padrão costuma falhar com *"An attempt was made to access a socket in a way forbidden by its
+access permissions"*. Para ver as faixas reservadas: `netsh interface ipv4 show excludedportrange protocol=tcp`.
 
 ## Instalação no Windows
 
@@ -98,7 +104,7 @@ o controle de custos não consegue medir o gasto em reais e bloqueia chamadas pa
 ## Testes
 ```powershell
 .\.venv\Scripts\python -m pytest                          # unitários (integração é pulada sem banco)
-$env:TEST_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+$env:TEST_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:44322/postgres"
 .\.venv\Scripts\python -m pytest                          # + integração (cria e remove um banco temporário)
 ```
 Dashboard: `cd apps\dashboard; npm run lint; npm run typecheck; npm run build`.

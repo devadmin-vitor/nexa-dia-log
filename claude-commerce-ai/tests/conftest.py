@@ -3,7 +3,7 @@
 - Testes unitários não precisam de serviços.
 - Testes de integração criam um banco temporário, aplicam supabase/migrations + seed e o removem no fim.
   Requerem TEST_DATABASE_URL (superusuário), por exemplo o Supabase local:
-      TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:44322/postgres
 """
 
 from __future__ import annotations

@@ -1,7 +1,12 @@
 # Segurança
 
 ## Rede
-- Todas as portas (API 8000, dashboard 3000, n8n 5678, Redis 6379, Supabase 54321-54323) presas a `127.0.0.1`.
+- API (8000), dashboard (3000), n8n (5678) e Redis (6379) ficam presos a `127.0.0.1`.
+- **O Supabase CLI publica as portas dele (44321 API, 44322 banco, 44323 Studio) em `0.0.0.0`**, isto é, acessíveis
+  por outros aparelhos da mesma rede. Não há opção no CLI para restringir isso. Rode uma vez, como Administrador,
+  `scripts\firewall.ps1`, que cria uma regra no Firewall do Windows bloqueando conexões de entrada da rede nas portas
+  44320-44329 (o acesso do próprio computador continua funcionando). Em redes públicas (café, coworking), mantenha a
+  rede marcada como "Pública" no Windows.
 - A stack local do Supabase **não é endurecida para produção**: nunca a exponha.
 - Se precisar de `-ApiHost 0.0.0.0` para o n8n alcançar a API, bloqueie a porta 8000 no Firewall do Windows para a rede.
 
