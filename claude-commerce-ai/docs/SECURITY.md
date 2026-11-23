@@ -1,43 +1,36 @@
-# Segurança e conformidade
+# Segurança
 
-## Credenciais
-- Segredos apenas em variáveis de ambiente do **servidor** (backend e servidor Next.js). Nenhum `NEXT_PUBLIC_*`.
-- O navegador nunca fala com o FastAPI: Server Components/Actions do Next.js chamam o backend com `X-API-Key`.
-- O n8n usa um token **diferente** (`X-Scheduler-Token`), guardado como credencial no próprio n8n.
-- Em `APP_ENV=production` o backend não inicia sem tokens de ≥ 32 caracteres; `/docs` é desabilitado.
-- Comparação de tokens em tempo constante (`hmac.compare_digest`).
-- Logs JSON mascaram chaves `sk-ant-…`, JWTs e pares `token=`/`authorization:`.
-- `/system/status` expõe somente *se* uma credencial existe, nunca o valor (testado).
-- Tokens OAuth futuros do TikTok Shop: Supabase Vault, nunca em colunas comuns.
+## Rede
+- Todas as portas (API 8000, dashboard 3000, n8n 5678, Redis 6379, Supabase 54321-54323) presas a `127.0.0.1`.
+- A stack local do Supabase **não é endurecida para produção**: nunca a exponha.
+- Se precisar de `-ApiHost 0.0.0.0` para o n8n alcançar a API, bloqueie a porta 8000 no Firewall do Windows para a rede.
 
-## Acesso ao dashboard
-Fase 1 não tem login de usuários. **Não exponha o frontend publicamente** sem `DASHBOARD_USER`/`DASHBOARD_PASSWORD`
-(Basic Auth em `src/proxy.ts`) atrás de HTTPS. Fase 2: Supabase Auth com papéis e RLS por usuário.
+## Segredos
+- Ficam só no `.env` (raiz) e em `apps/dashboard/.env.local` (servidor do Next.js). Ambos estão no `.gitignore`.
+- Nenhuma variável `NEXT_PUBLIC_*` contém segredo (há teste automatizado para isso).
+- `core/config.py` usa `SecretStr`; `public_view()` expõe apenas *se* algo está configurado.
+- Logs e auditoria mascaram chaves `sk-ant-…`, JWTs, senhas em URLs e pares `token=`/`password=`.
+- O token do dashboard (`BACKEND_API_TOKEN`) e o do agendador (`SCHEDULER_TOKEN`) são diferentes; um não serve para o outro.
+- Credenciais do n8n ficam criptografadas com `N8N_ENCRYPTION_KEY`; o backup as exporta criptografadas.
+- Futuros tokens OAuth do TikTok: Supabase Vault, nunca em colunas comuns.
 
-## Mecanismo de interrupção (kill switch)
-- Ativado pelo dashboard (com responsável e motivo, log `security`) ou no boot com `KILL_SWITCH=1`.
-- Bloqueia: execução de agentes, pipelines, disparos do agendador e decisões de aprovação (HTTP 423).
-- O Guardião de Operações **recomenda**, mas não aciona; a decisão é humana.
-- Orçamento diário de IA (`DAILY_AI_BUDGET_USD`) bloqueia novas chamadas quando atingido.
+## Acesso
+- Sprint 1 não tem login de usuários: o dashboard é para uso local por um operador.
+- `APP_ENV=production` exige tokens com 32+ caracteres e desativa `/docs`.
+- Basic Auth opcional do dashboard: `DASHBOARD_USER`/`DASHBOARD_PASSWORD` em `apps/dashboard/.env.local`.
 
-## Política de ações
-| Tipo | Execução |
-|---|---|
-| `read`, `internal_write` | automática |
-| `publish_content`, `change_listing`, `contact_seller` | aprovação humana; na Fase 1 a execução é manual |
-| `financial` | aprovação humana **e** execução sempre manual (também garantido por constraint no banco) |
+## Controles operacionais
+| Controle | Onde | Efeito |
+|---|---|---|
+| Parada de emergência | `app_settings.emergency_stop` ou `EMERGENCY_STOP=true` | bloqueia Claude, tarefas, agendador e aprovações (423); tarefas pendentes → `blocked` |
+| Orçamento | `DAILY_API_BUDGET_BRL`, `MONTHLY_BUDGET_BRL`, `USD_BRL_RATE` | chamada bloqueada antes de gastar |
+| Permissões | `agents/registry.yaml` + `core/permissions.py` | ferramenta fora da lista ou sem integração autorizada = negada |
+| Aprovação | `approvals` | publicar, gastar, alterar vitrine, contatar terceiros |
+| Gasto/financeiro | CHECK no banco | nunca marcado como executado automaticamente |
+| Publicação | trigger no banco | exige aprovação aprovada e divulgação comercial |
+| Auditoria | trigger no banco | `audit_logs` somente-inserção |
 
-## Regras de conteúdo (aplicadas em código, `app/services/compliance_rules.py`)
-- Divulgação obrigatória (`#publi` / link de afiliado).
-- Alegações somente da lista `verified_claims` do produto.
-- Proibidos: promessas absolutas/de cura/peso/renda, urgência falsa, prova social não verificada, depoimentos de terceiros, superlativos sem prova.
-- Sem amostra física registrada → sem roteiro de uso/teste/demonstração.
-- Sem direitos confirmados → sem uso de mídia do vendedor.
-- A IA pode acrescentar problemas, mas **não pode aprovar** o que as regras bloqueiam (testado).
-
-Estas regras são um ponto de partida técnico e não substituem revisão jurídica (CDC, CONAR, diretrizes do TikTok Shop).
-
-## Dados
-- Sem scraping: entradas são cadastro manual, relatórios exportados pelo operador ou (futuro) API oficial.
-- Importação limitada a 5 MB / 20 000 linhas, `.csv`/`.xlsx`, com erros reportados por linha.
-- `audit_logs` é somente-inserção no banco (trigger).
+## Conteúdo
+Sem scraping não autorizado, sem mídia de terceiros sem direitos, sem testes, avaliações ou demonstrações
+inventadas, divulgação comercial obrigatória. As regras automáticas do Auditor de Conformidade entram na Sprint 3
+(reaproveitando as regras da Fase 1) e não substituem revisão jurídica.

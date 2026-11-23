@@ -1,3 +1,8 @@
+# Segredos
+.env
+.env.*
+!.env.example
+
 # Python
 __pycache__/
 *.pyc
@@ -12,7 +17,12 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 
-# Segredos
-.env
-.env.*
-!.env.example
+# Dados locais e gerados
+backups/
+logs/*
+!logs/.gitkeep
+storage/*
+!storage/.gitkeep
+media/**/*
+!media/**/.gitkeep
+!media/*/
