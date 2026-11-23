@@ -19,11 +19,9 @@ foreach ($name in @('dashboard', 'api')) {
 }
 
 Write-Step 'Redis e n8n'
-& docker compose stop
-if ($LASTEXITCODE -eq 0) { Write-Ok 'Containers parados (volumes preservados)' } else { Write-Warn 'docker compose stop retornou erro' }
+if ((Invoke-Native 'docker' @('compose', 'stop')) -eq 0) { Write-Ok 'Containers parados (volumes preservados)' } else { Write-Warn 'docker compose stop retornou erro' }
 
 if (-not $KeepSupabase) {
     Write-Step 'Supabase local'
-    & npx supabase stop
-    if ($LASTEXITCODE -eq 0) { Write-Ok 'Supabase parado (dados preservados)' } else { Write-Warn 'supabase stop retornou erro' }
+    if ((Invoke-Native 'npx' @('supabase', 'stop')) -eq 0) { Write-Ok 'Supabase parado (dados preservados)' } else { Write-Warn 'supabase stop retornou erro' }
 }

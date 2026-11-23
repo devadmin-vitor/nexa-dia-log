@@ -28,11 +28,11 @@ Invoke-Checked 'npx' @('supabase', 'db', 'dump', '--local', '--data-only', '-f',
 Write-Ok 'schema.sql e data.sql'
 
 Write-Step 'n8n'
-& docker compose exec -T n8n sh -c 'mkdir -p /home/node/.n8n/backup && n8n export:workflow --all --output=/home/node/.n8n/backup/workflows.json && n8n export:credentials --all --output=/home/node/.n8n/backup/credentials.json' | Out-Null
-if ($LASTEXITCODE -eq 0) {
-    & docker compose cp n8n:/home/node/.n8n/backup/workflows.json (Join-Path $target 'n8n-workflows.json') | Out-Null
-    & docker compose cp n8n:/home/node/.n8n/backup/credentials.json (Join-Path $target 'n8n-credentials.encrypted.json') | Out-Null
-    & docker compose exec -T n8n rm -rf /home/node/.n8n/backup | Out-Null
+$exportCmd = 'mkdir -p /home/node/.n8n/backup && n8n export:workflow --all --output=/home/node/.n8n/backup/workflows.json && n8n export:credentials --all --output=/home/node/.n8n/backup/credentials.json'
+if ((Invoke-Native 'docker' @('compose', 'exec', '-T', 'n8n', 'sh', '-c', $exportCmd) -Quiet) -eq 0) {
+    Invoke-Native 'docker' @('compose', 'cp', 'n8n:/home/node/.n8n/backup/workflows.json', (Join-Path $target 'n8n-workflows.json')) -Quiet | Out-Null
+    Invoke-Native 'docker' @('compose', 'cp', 'n8n:/home/node/.n8n/backup/credentials.json', (Join-Path $target 'n8n-credentials.encrypted.json')) -Quiet | Out-Null
+    Invoke-Native 'docker' @('compose', 'exec', '-T', 'n8n', 'rm', '-rf', '/home/node/.n8n/backup') -Quiet | Out-Null
     Write-Ok 'Workflows e credenciais (criptografadas) exportados'
 } else {
     Write-Warn 'n8n indisponível ou sem workflows: export ignorado'

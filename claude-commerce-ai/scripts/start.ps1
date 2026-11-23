@@ -21,16 +21,15 @@ if ($envValues['EMERGENCY_STOP'] -eq 'true') { Write-Warn 'EMERGENCY_STOP=true: 
 New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null
 
 Write-Step 'Docker'
-& docker info *> $null
-if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop não está em execução.' }
+if (-not (Test-DockerRunning)) { throw 'Docker Desktop não está em execução. Abra o Docker Desktop e tente novamente.' }
 Invoke-Checked 'docker' @('compose', 'up', '-d') 'docker compose up'
 Write-Ok 'Redis e n8n iniciados'
 
 Write-Step 'Supabase local (pode levar alguns minutos na primeira vez)'
 Invoke-Checked 'npx' @('supabase', 'start') 'supabase start'
-$status = (& npx supabase status -o env) | Out-String
+$status = Get-NativeOutput 'npx' @('supabase', 'status', '-o', 'env')
 foreach ($pair in @(@('ANON_KEY', 'SUPABASE_ANON_KEY'), @('SERVICE_ROLE_KEY', 'SUPABASE_SERVICE_ROLE_KEY'))) {
-    if ($status -match "(?m)^$($pair[0])=""?([^""\r\n]+)""?") {
+    if ($status -and $status -match "(?m)^$($pair[0])=""?([^""\r\n]+)""?") {
         Set-DotEnvValue $pair[1] $Matches[1] -OnlyIfEmpty
     }
 }

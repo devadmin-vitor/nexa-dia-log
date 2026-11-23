@@ -22,17 +22,16 @@ foreach ($tool in @('git', 'node', 'npm', 'docker')) {
     if (Test-Command $tool) { Write-Ok $tool } else { $missing += $tool; Write-Fail "$tool não encontrado" }
 }
 $pythonCmd = $null
-if (Test-Command 'py') {
-    & py -3.11 --version *> $null
-    if ($LASTEXITCODE -eq 0) { $pythonCmd = @('py', '-3.11') }
+$found = Find-Python
+if ($found) {
+    $pythonCmd = $found.Command
+    Write-Ok "Python $($found.Version) ($($pythonCmd -join ' '))"
+} else {
+    $missing += 'Python 3.11+'
+    Write-Fail 'Python 3.11 ou mais novo não encontrado. Instale com: py install 3.11  (ou: winget install Python.Python.3.11)'
 }
-if (-not $pythonCmd -and (Test-Command 'python')) {
-    $ver = (& python -c "import sys; print('%d.%d' % sys.version_info[:2])")
-    if ([version]$ver -ge [version]'3.11') { $pythonCmd = @('python') }
-}
-if ($pythonCmd) { Write-Ok "Python ($($pythonCmd -join ' '))" } else { $missing += 'python 3.11+'; Write-Fail 'Python 3.11+ não encontrado' }
 if (Test-Command 'node') {
-    $nodeVer = (& node --version).TrimStart('v')
+    $nodeVer = (Get-NativeOutput 'node' @('--version')).TrimStart('v')
     if ([version]$nodeVer -lt [version]'20.9.0') { $missing += 'node >= 20.9'; Write-Fail "Node $nodeVer (requer 20.9+)" }
 }
 if (Test-Command 'ffmpeg') { Write-Ok 'ffmpeg' } else { Write-Warn 'ffmpeg não encontrado (necessário só na Sprint 3: winget install Gyan.FFmpeg)' }
@@ -70,7 +69,7 @@ Write-Ok 'Dependências Python instaladas'
 
 Write-Step 'Supabase CLI (npm)'
 Invoke-Checked 'npm' @('install', '--no-fund', '--no-audit') 'npm install (raiz)'
-Write-Ok "Supabase CLI $(& npx supabase --version)"
+Write-Ok "Supabase CLI $(Get-NativeOutput 'npx' @('supabase', '--version'))"
 
 Write-Step 'Dashboard (apps/dashboard)'
 Push-Location (Join-Path $script:Root 'apps\dashboard')
@@ -84,8 +83,7 @@ Write-Ok 'apps/dashboard/.env.local criado'
 
 if (-not $SkipDocker) {
     Write-Step 'Imagens Docker (Redis, n8n)'
-    & docker info *> $null
-    if ($LASTEXITCODE -ne 0) { throw 'Docker Desktop não está em execução. Abra o Docker Desktop e rode o setup novamente.' }
+    if (-not (Test-DockerRunning)) { throw 'Docker Desktop não está em execução. Abra o Docker Desktop, espere ficar "running" e rode o setup novamente.' }
     Invoke-Checked 'docker' @('compose', 'pull') 'docker compose pull'
     Write-Ok 'Imagens baixadas'
 }
