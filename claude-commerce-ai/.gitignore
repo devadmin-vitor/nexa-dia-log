@@ -26,3 +26,6 @@ storage/*
 media/**/*
 !media/**/.gitkeep
 !media/*/
+
+# Pasta de trabalho do Claude Cowork (dados do negócio; não versionar)
+cowork/

@@ -93,6 +93,9 @@ if (-not $SkipDocker) {
     Write-Ok 'Imagens baixadas'
 }
 
+Write-Step 'Pasta do Claude Cowork'
+& (Join-Path $PSScriptRoot 'cowork-sync.ps1')
+
 Write-Host ''
 Write-Host 'Instalação concluída. Próximos passos:' -ForegroundColor Green
 Write-Host '  1. powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1'

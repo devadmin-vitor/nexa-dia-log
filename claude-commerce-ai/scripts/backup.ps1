@@ -6,12 +6,14 @@
   em local seguro. As credenciais exportadas do n8n só podem ser restauradas com o mesmo N8N_ENCRYPTION_KEY.
 .EXAMPLE
   .\scripts\backup.ps1
-  .\scripts\backup.ps1 -Keep 30 -IncludeMedia
+  .\scripts\backup.ps1 -Keep 30 -IncludeMedia -IncludeCowork
 #>
 [CmdletBinding()]
 param(
     [int]$Keep = 14,
-    [switch]$IncludeMedia
+    [switch]$IncludeMedia,
+    # Inclui cowork\entrada e cowork\saida (relatórios, roteiros e análises feitos no Cowork)
+    [switch]$IncludeCowork
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
@@ -41,6 +43,12 @@ if ((Invoke-Native 'docker' @('compose', 'exec', '-T', 'n8n', 'sh', '-c', $expor
 Write-Step 'Arquivos'
 $paths = @((Join-Path $script:Root 'storage'))
 if ($IncludeMedia) { $paths += (Join-Path $script:Root 'media') }
+if ($IncludeCowork) {
+    foreach ($d in @('cowork\entrada', 'cowork\saida')) {
+        $full = Join-Path $script:Root $d
+        if (Test-Path $full) { $paths += $full }
+    }
+}
 Compress-Archive -Path $paths -DestinationPath (Join-Path $target 'files.zip') -Force
 Write-Ok "files.zip ($(($paths | ForEach-Object { Split-Path $_ -Leaf }) -join ', '))"
 
