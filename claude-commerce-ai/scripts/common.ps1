@@ -109,19 +109,47 @@ function Test-DockerRunning {
     return ((Invoke-Native 'docker' @('info') -Quiet) -eq 0)
 }
 
-# Encontra um Python >= 3.11: py -3.11, depois py -3 (versão mais nova instalada), depois python.
-function Find-Python {
-    $candidates = @()
-    if (Test-Command 'py') { $candidates += , @('py', '-3.11'); $candidates += , @('py', '-3') }
-    if (Test-Command 'python') { $candidates += , @('python') }
-    foreach ($cmd in $candidates) {
-        $extra = @()
-        if ($cmd.Count -gt 1) { $extra = $cmd[1..($cmd.Count - 1)] }
-        $ver = Get-NativeOutput $cmd[0] ($extra + @('-c', 'import sys;print(*sys.version_info[:2],sep=chr(46))'))
-        if ($ver -and $ver -match '^\d+\.\d+$' -and [version]$ver -ge [version]'3.11') {
-            return @{ Command = $cmd; Version = $ver }
+# Versões com todas as dependências testadas. Versões mais novas só são usadas se nada daqui existir
+# (pacotes como psycopg-binary e pydantic-core podem ainda não ter instaladores prontos para elas).
+$script:PreferredPython = @('3.11', '3.12', '3.13', '3.14')
+
+function Get-PythonVersion([string[]]$Command) {
+    $extra = @()
+    if ($Command.Count -gt 1) { $extra = $Command[1..($Command.Count - 1)] }
+    $ver = Get-NativeOutput $Command[0] ($extra + @('-c', 'import sys;print(*sys.version_info[:2],sep=chr(46))'))
+    if ($ver -and $ver -match '^\d+\.\d+$') { return $ver }
+    return $null
+}
+
+# Procura um Python 3.11+ em: py -3.X, Pythons instalados pelo uv (Astral), python do PATH, py -3.
+# Prefere as versões de $PreferredPython, na ordem.
+function Find-Python([string]$Override) {
+    if ($Override) {
+        $cmd = @($Override)
+        $ver = Get-PythonVersion $cmd
+        if ($ver -and [version]$ver -ge [version]'3.11') { return @{ Command = $cmd; Version = $ver } }
+        throw "O Python informado em -Python não funciona ou é anterior ao 3.11: $Override"
+    }
+    $found = @()
+    foreach ($v in $script:PreferredPython) {
+        if (Test-Command 'py') {
+            $ver = Get-PythonVersion @('py', "-$v")
+            if ($ver -eq $v) { return @{ Command = @('py', "-$v"); Version = $ver } }
+        }
+        if (Test-Command 'uv') {
+            $path = Get-NativeOutput 'uv' @('python', 'find', $v)
+            if ($path -and (Test-Path $path)) {
+                $ver = Get-PythonVersion @($path)
+                if ($ver -eq $v) { return @{ Command = @($path); Version = $ver } }
+            }
         }
     }
+    foreach ($cmd in @(@('python'), @('py', '-3'))) {
+        if (-not (Test-Command $cmd[0])) { continue }
+        $ver = Get-PythonVersion $cmd
+        if ($ver -and [version]$ver -ge [version]'3.11') { $found += , @{ Command = $cmd; Version = $ver } }
+    }
+    if ($found.Count -gt 0) { return $found[0] }
     return $null
 }
 

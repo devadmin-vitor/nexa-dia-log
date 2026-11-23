@@ -10,7 +10,9 @@
 #>
 [CmdletBinding()]
 param(
-    [switch]$SkipDocker
+    [switch]$SkipDocker,
+    # Caminho de um python.exe específico (ex.: o 3.11 instalado pelo uv)
+    [string]$Python
 )
 
 . (Join-Path $PSScriptRoot 'common.ps1')
@@ -22,10 +24,13 @@ foreach ($tool in @('git', 'node', 'npm', 'docker')) {
     if (Test-Command $tool) { Write-Ok $tool } else { $missing += $tool; Write-Fail "$tool não encontrado" }
 }
 $pythonCmd = $null
-$found = Find-Python
+$found = Find-Python $Python
 if ($found) {
     $pythonCmd = $found.Command
     Write-Ok "Python $($found.Version) ($($pythonCmd -join ' '))"
+    if ($script:PreferredPython -notcontains $found.Version) {
+        Write-Warn "Python $($found.Version) é mais novo que as versões testadas (3.11-3.14); se a instalação de pacotes falhar, instale o 3.11 ou use -Python <caminho>."
+    }
 } else {
     $missing += 'Python 3.11+'
     Write-Fail 'Python 3.11 ou mais novo não encontrado. Instale com: py install 3.11  (ou: winget install Python.Python.3.11)'
