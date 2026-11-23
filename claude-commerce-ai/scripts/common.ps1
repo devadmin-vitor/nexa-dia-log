@@ -2,6 +2,11 @@
 # Compatível com Windows PowerShell 5.1 e PowerShell 7+.
 
 $ErrorActionPreference = 'Stop'
+# Acentos e símbolos corretos no console (Windows PowerShell 5.1 usa a página de código antiga por padrão).
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    $OutputEncoding = [System.Text.Encoding]::UTF8
+} catch { }
 $script:Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $script:EnvFile = Join-Path $script:Root '.env'
 $script:PidDir = Join-Path $script:Root 'storage\pids'

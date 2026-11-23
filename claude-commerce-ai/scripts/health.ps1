@@ -27,11 +27,13 @@ if ($PSVersionTable.PSVersion.Major -ge 7) {
 } else {
     # Windows PowerShell 5.1: respostas 4xx/5xx viram WebException; o corpo é lido do stream.
     try {
-        $body = (Invoke-WebRequest -Uri "$ApiUrl/health/services" -Headers $headers -UseBasicParsing -TimeoutSec 30).Content
+        # .Content decodificaria como ISO-8859-1 (a API não informa charset); lemos os bytes como UTF-8.
+        $resp = Invoke-WebRequest -Uri "$ApiUrl/health/services" -Headers $headers -UseBasicParsing -TimeoutSec 30
+        $body = [System.Text.Encoding]::UTF8.GetString($resp.RawContentStream.ToArray())
     } catch {
         $resp = $_.Exception.Response
         if ($null -eq $resp) { throw }
-        $reader = New-Object System.IO.StreamReader($resp.GetResponseStream())
+        $reader = New-Object System.IO.StreamReader($resp.GetResponseStream(), [System.Text.Encoding]::UTF8)
         $body = $reader.ReadToEnd()
     }
 }

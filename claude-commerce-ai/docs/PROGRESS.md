@@ -15,7 +15,11 @@ Regra: nenhuma etapa é marcada como concluída sem os testes correspondentes ex
 - [x] 5 workflows n8n
 - [x] 37 testes (17 unitários + 20 de integração com Postgres real), também em Python 3.11
 
-Validação pendente (precisa do seu computador): rodar `setup.ps1` → `start.ps1` → `health.ps1` no Windows.
+**Validado no Windows do operador (23/11/2026):** `setup.ps1` e `start.ps1` concluíram; verificação de saúde com
+todos os serviços obrigatórios ok (Postgres 17 com migrações e 7 agentes, Supabase API, Redis, n8n, API, dashboard).
+Problemas encontrados no Windows e corrigidos: erro do PowerShell 5.1 com stderr de programas externos, Python
+instalado pelo uv, porta 6379 ocupada (escolha automática de porta) e faixa de portas reservada pelo Hyper-V
+(Supabase movido para 443xx).
 
 ## Decisão de escopo (23/11/2026)
 Operação **assistida pelo Claude Cowork**, incluído no plano Claude do operador. Os agentes **não** chamam a
