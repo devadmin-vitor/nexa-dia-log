@@ -54,7 +54,8 @@ Set-DotEnvValue 'SCHEDULER_TOKEN' (New-Secret 32) -OnlyIfEmpty
 Set-DotEnvValue 'REDIS_PASSWORD' (New-Secret 24) -OnlyIfEmpty
 Set-DotEnvValue 'N8N_ENCRYPTION_KEY' (New-Secret 32) -OnlyIfEmpty
 $envValues = Read-DotEnv
-Set-DotEnvValue 'REDIS_URL' "redis://:$($envValues['REDIS_PASSWORD'])@localhost:6379/0" -OnlyIfEmpty
+$redisPort = if ($envValues['REDIS_HOST_PORT']) { $envValues['REDIS_HOST_PORT'] } else { '6379' }
+Set-DotEnvValue 'REDIS_URL' "redis://:$($envValues['REDIS_PASSWORD'])@localhost:$redisPort/0" -OnlyIfEmpty
 $envValues = Read-DotEnv
 Write-Ok 'Tokens locais gerados (valores existentes foram preservados)'
 if (-not $envValues['ANTHROPIC_API_KEY']) { Write-Ok 'Modo Cowork: nenhuma API de IA configurada (sem custo). Nada a preencher.' }

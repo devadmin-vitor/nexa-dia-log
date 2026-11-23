@@ -14,7 +14,8 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}", "--appendonly", "yes"]
     ports:
-      - "127.0.0.1:6379:6379"
+      # Porta no Windows configurável (REDIS_HOST_PORT) para evitar conflito com outro Redis
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -29,7 +30,7 @@ services:
     image: n8nio/n8n:${N8N_VERSION:-2.48.8}
     restart: unless-stopped
     ports:
-      - "127.0.0.1:5678:5678"
+      - "127.0.0.1:${N8N_HOST_PORT:-5678}:5678"
     environment:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?defina N8N_ENCRYPTION_KEY no .env}
       N8N_HOST: localhost

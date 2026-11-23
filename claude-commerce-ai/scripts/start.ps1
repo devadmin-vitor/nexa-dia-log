@@ -22,7 +22,16 @@ New-Item -ItemType Directory -Force -Path $script:LogDir | Out-Null
 
 Write-Step 'Docker'
 if (-not (Test-DockerRunning)) { throw 'Docker Desktop não está em execução. Abra o Docker Desktop e tente novamente.' }
-Invoke-Checked 'docker' @('compose', 'up', '-d') 'docker compose up'
+if ((Invoke-Native 'docker' @('compose', 'up', '-d')) -ne 0) {
+    $redisPort = if ($envValues['REDIS_HOST_PORT']) { $envValues['REDIS_HOST_PORT'] } else { '6379' }
+    $n8nPort = if ($envValues['N8N_HOST_PORT']) { $envValues['N8N_HOST_PORT'] } else { '5678' }
+    Write-Fail 'docker compose up falhou.'
+    Write-Host "    Se a mensagem acima diz 'port is already allocated', outra aplicação usa a porta." -ForegroundColor Yellow
+    Write-Host "    Descubra qual: docker ps --format ""{{.Names}} {{.Ports}}""   e   netstat -ano | findstr :$redisPort" -ForegroundColor Yellow
+    Write-Host "    Solução: no .env, troque REDIS_HOST_PORT (atual $redisPort) e a porta em REDIS_URL," -ForegroundColor Yellow
+    Write-Host "    ou N8N_HOST_PORT (atual $n8nPort) e N8N_URL; depois rode o start.ps1 de novo." -ForegroundColor Yellow
+    throw 'docker compose up falhou'
+}
 Write-Ok 'Redis e n8n iniciados'
 
 Write-Step 'Supabase local (pode levar alguns minutos na primeira vez)'
