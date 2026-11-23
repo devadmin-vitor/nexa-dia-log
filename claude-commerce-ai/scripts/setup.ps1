@@ -57,8 +57,7 @@ $envValues = Read-DotEnv
 Set-DotEnvValue 'REDIS_URL' "redis://:$($envValues['REDIS_PASSWORD'])@localhost:6379/0" -OnlyIfEmpty
 $envValues = Read-DotEnv
 Write-Ok 'Tokens locais gerados (valores existentes foram preservados)'
-if (-not $envValues['ANTHROPIC_API_KEY']) { Write-Warn 'ANTHROPIC_API_KEY vazio: preencha no .env para usar a Claude API' }
-if (-not $envValues['USD_BRL_RATE']) { Write-Warn 'USD_BRL_RATE vazio: preencha a cotação para liberar chamadas pagas' }
+if (-not $envValues['ANTHROPIC_API_KEY']) { Write-Ok 'Modo Cowork: nenhuma API de IA configurada (sem custo). Nada a preencher.' }
 
 Write-Step 'Ambiente Python (.venv)'
 if (-not (Get-PythonExe)) {
@@ -95,6 +94,6 @@ if (-not $SkipDocker) {
 
 Write-Host ''
 Write-Host 'Instalação concluída. Próximos passos:' -ForegroundColor Green
-Write-Host '  1. (Opcional) Preencha ANTHROPIC_API_KEY e USD_BRL_RATE no .env'
-Write-Host '  2. .\scripts\start.ps1'
-Write-Host '  3. Abra http://localhost:5678 e crie a conta owner do n8n; depois importe os workflows (README).'
+Write-Host '  1. powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1'
+Write-Host '  2. Abra http://localhost:3000 (dashboard)'
+Write-Host '  3. (Opcional) http://localhost:5678: crie a conta owner do n8n e importe os workflows (README).'
